@@ -300,29 +300,52 @@ Color piece_color(Piece piece) {
     return 0b1000 & piece;
 }
 
+Piece piece_as_white(Piece piece) {
+    return 0b0111 & piece;
+}
+
 typedef void (*ApplyDirFn)(Sq*);
 void apply_dir_u(Sq *sq) { sq->r += 1; }
 void apply_dir_d(Sq *sq) { sq->r -= 1; }
 void apply_dir_l(Sq *sq) { sq->f -= 1; }
 void apply_dir_r(Sq *sq) { sq->f += 1; }
 
-MoveList legal_moves_for_rook(
+void apply_dir_ur(Sq *sq) { sq->f += 1; sq->r += 1; };
+void apply_dir_ul(Sq *sq) { sq->f -= 1; sq->r += 1; };
+void apply_dir_dr(Sq *sq) { sq->f += 1; sq->r -= 1; };
+void apply_dir_dl(Sq *sq) { sq->f -= 1; sq->r -= 1; };
+
+ApplyDirFn rook_dir_fns[] = {
+    apply_dir_u, apply_dir_d, apply_dir_l, apply_dir_r, NULL};
+
+ApplyDirFn bishop_dir_fns[] = {
+    apply_dir_ur, apply_dir_ul, apply_dir_dr, apply_dir_dl, NULL};
+
+ApplyDirFn queen_dir_fns[] = {
+    apply_dir_u, apply_dir_d, apply_dir_l, apply_dir_r,
+    apply_dir_ur, apply_dir_ul, apply_dir_dr, apply_dir_dl, NULL};
+
+MoveList legal_moves_for_piece(
     Pos* pos, Sq sq0, Piece piece, MoveList *ml
 ) {
     Color own_color = piece_color(piece);
 
-    ApplyDirFn dir_fns[] = {
-            apply_dir_u, apply_dir_d, apply_dir_l, apply_dir_r };
+    ApplyDirFn *dir_fns;
+    Piece wh_p = piece_as_white(piece);
+    if (wh_p == R_WHITE) {
+        dir_fns = rook_dir_fns;
+    } else if (wh_p == B_WHITE) {
+        dir_fns = bishop_dir_fns;
+    } else if (wh_p == Q_WHITE) {
+        dir_fns = queen_dir_fns;
+    }
 
-    for (int i = 0; i < 4; i++) {
+    ApplyDirFn dir_fn;
+    for (int i = 0; (dir_fn = dir_fns[i]) != NULL; i++) {
         Sq sq = { .f = sq0.f, .r = sq0.r };
-        ApplyDirFn dir_fn = dir_fns[i];
         for (;;) {
             dir_fn(&sq);
-            if (sq.f < 0) { break; }
-            if (sq.f > 7) { break; }
-            if (sq.r < 0) { break; }
-            if (sq.r > 7) { break; }
+            if (sq.f < 0 || sq.f > 7 || sq.r < 0 || sq.r> 7) { break; }
             Piece found = get_piece_at_sq(pos, sq);
             Color found_color = piece_color(found);
             if (found == PIECE_EMPTY) {
@@ -352,8 +375,8 @@ int main() {
     Pos *pos = decode_fen(empty_fen);
 
     MoveList ml = make_move_list();
-    Sq sq = make_sq(0, 0);
-    legal_moves_for_rook(pos, sq, R_WHITE, &ml);
+    Sq sq = make_sq(3, 3);
+    legal_moves_for_piece(pos, sq, Q_BLACK, &ml);
     for (int i = 0; i < ml.len; i++) {
         Move move2 = *(ml.data + i);
         print_sq(move2.to);
