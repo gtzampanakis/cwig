@@ -35,11 +35,6 @@
 
 #define MOVE_LIST_INITIAL_CAPACITY 64
 
-typedef struct {
-    int f;
-    int r;
-} Sq;
-
 typedef char Piece;
 typedef char Castling;
 typedef char Direction;
@@ -48,6 +43,11 @@ typedef char Rank;
 typedef char Color;
 typedef unsigned int Ply;
 typedef double Val;
+
+typedef struct {
+    File f;
+    Rank r;
+} Sq;
 
 const Direction DIR_U = 0;
 const Direction DIR_R = 1;
@@ -86,11 +86,24 @@ typedef struct MoveList {
 
 MoveList make_move_list() {
     Move *data = calloc(MOVE_LIST_INITIAL_CAPACITY, sizeof(Move));
-    MoveList move_list = { 0, MOVE_LIST_INITIAL_CAPACITY, data };
+    MoveList move_list = {
+        .len = 0,
+        .capacity = MOVE_LIST_INITIAL_CAPACITY,
+        .data = data
+    };
     return move_list;
 }
 
-Move *get_empty_move_appended_to_move_list(MoveList *ml) {
+Sq make_sq(File f, Rank r) {
+    Sq sq = { .f = f, .r = r };
+    return sq;
+}
+
+void free_move_list(MoveList *ml) {
+    free(ml->data);
+}
+
+Move *move_appended_to_move_list(MoveList *ml) {
     if (ml->len == ml->capacity) {
         int new_capacity = ml->capacity + MOVE_LIST_INITIAL_CAPACITY;
         ml->data = reallocarray(ml->data, new_capacity, sizeof(Move)); 
@@ -100,17 +113,13 @@ Move *get_empty_move_appended_to_move_list(MoveList *ml) {
         }
         ml->capacity = new_capacity;
     }
-    ml->len++;
-    return ml->data + sizeof(Move);
+    ml->len = ml->len + 1;
+    return ml->data + ml->len * sizeof(Move);
 }
 
 void truncate_move_list(MoveList *ml) {
     ml->capacity = ml->len;
     ml->data = reallocarray(ml->data, ml->len, sizeof(Move));
-}
-
-void free_move_list(MoveList *ml) {
-    free(ml->data);
 }
 
 typedef struct Pos {
@@ -124,15 +133,8 @@ typedef struct Pos {
     MoveList moves;
 } Pos;
 
-typedef struct {
-    // Number of bits equal to POSITION_MEMORY_SIZE.
-    Pos *next;
-    Pos data[POSITION_MEMORY_SIZE];
-} PosMemory;
-
 Pos *make_position() {
      Pos *p = malloc(sizeof (Pos));
-     //printf("%d", p);
      if (p == NULL) {
          printf("Unable to allocation memory for position. Aborting...");
          abort();
@@ -159,15 +161,34 @@ void set_piece_at_sq(Pos *pos, Sq sq, Piece piece) {
 }
 
 Piece get_piece_at_sq(Pos *pos, Sq sq) {
-    pos->placement[sq.f][sq.r];
+    return pos->placement[sq.f][sq.r];
 }
 
-int algf_to_f(char algf) {
-    return algf - 10;
+File algf_to_f(char algf) {
+    return algf - 97;
 }
 
-int algr_to_r(char algr) {
+Rank algr_to_r(char algr) {
     return algr - 49;
+}
+
+char f_to_algf(File f) {
+    return f + 97;
+}
+
+char r_to_algr(Rank r) {
+    return r + 49;
+}
+
+void sq_to_algsq(Sq sq, char *str) {
+    str[0] = f_to_algf(sq.f);
+    str[1] = r_to_algr(sq.r);
+}
+
+void print_sq(Sq sq) {
+    char str[2];
+    sq_to_algsq(sq, str);
+    printf("%c%c\n", str[0], str[1]);
 }
 
 Pos *decode_fen(char *fen_string) {
@@ -179,7 +200,7 @@ Pos *decode_fen(char *fen_string) {
 
     int i = 0;
     char c;
-    Sq sq = { 0, 7 };
+    Sq sq = make_sq(0, 7);
     while ((c = fen_string[i++]) != '\0') {
         if (c == ' ') {
             state++;
@@ -281,7 +302,7 @@ Color piece_color(Piece piece) {
 }
 
 MoveList legal_moves_for_rook(
-    Pos* pos, const Sq sq0, Piece piece, MoveList *move_list0
+    Pos* pos, Sq sq0, Piece piece, MoveList *ml
 ) {
     Color own_color = piece_color(piece);
 
@@ -291,7 +312,7 @@ MoveList legal_moves_for_rook(
     sq.f = sq0.f;
     sq.r = sq0.r;
     for (;;) {
-        sq.f += 1; sq.r -= 1;
+        sq.r += 1;
         if (sq.f < 0) { break; }
         if (sq.f > 7) { break; }
         if (sq.r < 0) { break; }
@@ -299,9 +320,15 @@ MoveList legal_moves_for_rook(
         Piece found = get_piece_at_sq(pos, sq);
         Color found_color = piece_color(found);
         if (found == PIECE_EMPTY) {
+            Move *move = move_appended_to_move_list(ml);
+            move->from = sq0;
+            move->to = sq;
         } else if (own_color == found_color) {
             break;
         } else {
+            Move *move = move_appended_to_move_list(ml);
+            move->from = sq0;
+            move->to = sq;
             break;
         }
     }
@@ -315,13 +342,20 @@ int main() {
                 "8/4k3/3N1N2/4Q3/1B6/8/1K6/8 b - - 0 1";
     char fen[] = "8/4k3/3P1P2/4Q3/1B6/8/1K6/8 w - - 0 1";
 
-    Pos *pos = decode_fen(starting_fen);
+    Pos *pos = decode_fen(empty_fen);
 
-    //printf("%d\n", pos->placement[7][7]);
-    //printf("%d\n", pos->active_color);
-    //printf("%d\n", pos->castling);
-    //printf("%d\n", pos->halfmoves);
-    //printf("%d\n", pos->fullmoves);
+    MoveList ml = make_move_list();
+    Sq sq = make_sq(0, 0);
+    legal_moves_for_rook(pos, sq, R_WHITE, &ml);
+    for (int i = 0; i < ml.len; i++) {
+        Move move1 = ml.data[i];
+        Move move2 = *(ml.data + i * sizeof(Move));
+        print_sq(move1.to);
+        print_sq(move2.to);
+        printf("\n");
+    }
+
+    free_move_list(&ml);
 
     free_position(pos);
 
