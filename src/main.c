@@ -300,35 +300,43 @@ Color piece_color(Piece piece) {
     return 0b1000 & piece;
 }
 
+typedef void (*ApplyDirFn)(Sq*);
+void apply_dir_u(Sq *sq) { sq->r += 1; }
+void apply_dir_d(Sq *sq) { sq->r -= 1; }
+void apply_dir_l(Sq *sq) { sq->f -= 1; }
+void apply_dir_r(Sq *sq) { sq->f += 1; }
+
 MoveList legal_moves_for_rook(
     Pos* pos, Sq sq0, Piece piece, MoveList *ml
 ) {
     Color own_color = piece_color(piece);
 
-    // up
-    Sq sq;
-    Move move;
-    sq.f = sq0.f;
-    sq.r = sq0.r;
-    for (;;) {
-        sq.r += 1;
-        if (sq.f < 0) { break; }
-        if (sq.f > 7) { break; }
-        if (sq.r < 0) { break; }
-        if (sq.r > 7) { break; }
-        Piece found = get_piece_at_sq(pos, sq);
-        Color found_color = piece_color(found);
-        if (found == PIECE_EMPTY) {
-            Move *move = move_appended_to_move_list(ml);
-            move->from = sq0;
-            move->to = sq;
-        } else if (own_color == found_color) {
-            break;
-        } else {
-            Move *move = move_appended_to_move_list(ml);
-            move->from = sq0;
-            move->to = sq;
-            break;
+    ApplyDirFn dir_fns[] = {
+            apply_dir_u, apply_dir_d, apply_dir_l, apply_dir_r };
+
+    for (int i = 0; i < 4; i++) {
+        Sq sq = { .f = sq0.f, .r = sq0.r };
+        ApplyDirFn dir_fn = dir_fns[i];
+        for (;;) {
+            dir_fn(&sq);
+            if (sq.f < 0) { break; }
+            if (sq.f > 7) { break; }
+            if (sq.r < 0) { break; }
+            if (sq.r > 7) { break; }
+            Piece found = get_piece_at_sq(pos, sq);
+            Color found_color = piece_color(found);
+            if (found == PIECE_EMPTY) {
+                Move *move = move_appended_to_move_list(ml);
+                move->from = sq0;
+                move->to = sq;
+            } else if (own_color == found_color) {
+                break;
+            } else {
+                Move *move = move_appended_to_move_list(ml);
+                move->from = sq0;
+                move->to = sq;
+                break;
+            }
         }
     }
 }
