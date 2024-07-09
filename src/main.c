@@ -113,7 +113,7 @@ Move *move_appended_to_move_list(MoveList *ml) {
         }
         ml->capacity = new_capacity;
     }
-    return ml->data + ml->len++ * sizeof(Move);
+    return ml->data + ml->len++;
 }
 
 void truncate_move_list(MoveList *ml) {
@@ -347,8 +347,8 @@ int main() {
     Sq sq = make_sq(0, 0);
     legal_moves_for_rook(pos, sq, R_WHITE, &ml);
     for (int i = 0; i < ml.len; i++) {
-        Move move1 = *(ml.data + i * sizeof(Move));
-        print_sq(move1.to);
+        Move move2 = *(ml.data + i);
+        print_sq(move2.to);
     }
 
     free_move_list(&ml);
