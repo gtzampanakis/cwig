@@ -84,14 +84,10 @@ typedef struct MoveList {
     Move *data;
 } MoveList;
 
-MoveList make_move_list() {
-    Move *data = calloc(MOVE_LIST_INITIAL_CAPACITY, sizeof(Move));
-    MoveList move_list = {
-        .len = 0,
-        .capacity = MOVE_LIST_INITIAL_CAPACITY,
-        .data = data
-    };
-    return move_list;
+void init_move_list(MoveList *ml) {
+    ml->data = calloc(MOVE_LIST_INITIAL_CAPACITY, sizeof(Move));
+    ml->len = 0;
+    ml->capacity = MOVE_LIST_INITIAL_CAPACITY;
 }
 
 Sq make_sq(File f, Rank r) {
@@ -128,6 +124,7 @@ typedef struct Pos {
     Sq en_passant;
     int halfmoves;
     int fullmoves;
+    int is_king_in_check;
 
     MoveList moves;
 } Pos;
@@ -148,6 +145,8 @@ Pos *make_position() {
      p->castling = 0;
      p->halfmoves = 0;
      p->fullmoves = 0;
+     p->is_king_in_check = -1;
+     init_move_list(&p->moves);
      return p;
 }
 
@@ -542,6 +541,10 @@ int is_king_in_check(Pos *pos) {
     return 0;
 }
 
+void expand_position(Pos *pos) {
+    pos->is_king_in_check = is_king_in_check(pos);
+}
+
 int main() {
     char starting_fen[] =
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 123 55";
@@ -552,7 +555,8 @@ int main() {
 
     Pos *pos = decode_fen("6Nr/2K1p3/5B2/8/8/1k1PnP2/2P1P3/8 b - - 0 1");
 
-    MoveList ml = make_move_list();
+    MoveList ml;
+    init_move_list(&ml);
     Sq sq = make_sq(4, 6);
     legal_moves_for_piece(pos, sq, P_BLACK, &ml);
     for (int i = 0; i < ml.len; i++) {
