@@ -499,6 +499,31 @@ int is_king_in_square_in_check(Pos *pos, Sq sq0) {
         }
     }
 
+    ApplyDirFn pawn_capture_dirs[3];
+    if (own_color == COLOR_WHITE) {
+        pawn_capture_dirs[0] = apply_dir_ul;
+        pawn_capture_dirs[1] = apply_dir_ur;
+    } else {
+        pawn_capture_dirs[0] = apply_dir_dl;
+        pawn_capture_dirs[1] = apply_dir_dr;
+    }
+    pawn_capture_dirs[2] = NULL;
+
+    for (int i = 0; (dir_fn = pawn_capture_dirs[i]) != NULL; i++) {
+        Sq sq = sq0;
+        dir_fn(&sq);
+        if (sq.f < 0 || sq.f > 7 || sq.r < 0 || sq.r> 7) { continue; }
+        Piece found = get_piece_at_sq(pos, sq);
+        Piece found_as_white = piece_as_white(found);
+        Color found_color = piece_color(found);
+        if (found == PIECE_EMPTY) {
+            ;
+        } else if (found_color != own_color && found_as_white == P_WHITE) {
+            return 1;
+        }
+    }
+
+
     return 0;
 }
 
@@ -525,7 +550,7 @@ int main() {
                 "8/4k3/3N1N2/4Q3/1B6/8/1K6/8 b - - 0 1";
     char fen[] = "8/4k3/3P1P2/4Q3/1B6/8/1K6/8 w - - 0 1";
 
-    Pos *pos = decode_fen("K5Nr/4p3/1n3B2/8/8/3PnP2/4P3/8 w - - 0 1");
+    Pos *pos = decode_fen("6Nr/2K1p3/5B2/8/8/1k1PnP2/2P1P3/8 b - - 0 1");
 
     MoveList ml = make_move_list();
     Sq sq = make_sq(4, 6);
