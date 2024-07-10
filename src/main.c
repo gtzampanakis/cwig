@@ -344,45 +344,43 @@ ApplyDirFn white_pawn_capture_dir_fns[] = {
 ApplyDirFn black_pawn_capture_dir_fns[] = {
                 apply_dir_dr, apply_dir_dl, NULL };
 
-MoveList legal_moves_for_piece(
-    Pos* pos, Sq sq0, Piece piece, MoveList *ml
-) {
+MoveList legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
     Color own_color = piece_color(piece);
 
     ApplyDirFn *dir_fns;
-    Piece wh_p = piece_as_white(piece);
+    Piece wp = piece_as_white(piece);
     int move_to_empty_allowed;
     int captures_allowed;
     int max_distance;
 
     for (int n_pass = 0; n_pass < 2; n_pass++) {
         if (n_pass == 0) {
-            if (wh_p == R_WHITE) {
+            if (wp == R_WHITE) {
                 captures_allowed = 1;
                 move_to_empty_allowed = 1;
                 dir_fns = rook_dir_fns;
                 max_distance = 9999;
-            } else if (wh_p == B_WHITE) {
+            } else if (wp == B_WHITE) {
                 captures_allowed = 1;
                 move_to_empty_allowed = 1;
                 dir_fns = bishop_dir_fns;
                 max_distance = 9999;
-            } else if (wh_p == Q_WHITE) {
+            } else if (wp == Q_WHITE) {
                 captures_allowed = 1;
                 move_to_empty_allowed = 1;
                 dir_fns = queen_dir_fns;
                 max_distance = 9999;
-            } else if (wh_p == K_WHITE) {
+            } else if (wp == K_WHITE) {
                 captures_allowed = 1;
                 move_to_empty_allowed = 1;
                 dir_fns = king_dir_fns;
                 max_distance = 1;
-            } else if (wh_p == N_WHITE) {
+            } else if (wp == N_WHITE) {
                 captures_allowed = 1;
                 move_to_empty_allowed = 1;
                 dir_fns = knight_dir_fns;
                 max_distance = 1;
-            } else if (wh_p == P_WHITE) {
+            } else if (wp == P_WHITE) {
                 captures_allowed = 0;
                 move_to_empty_allowed = 1;
                 if (own_color == COLOR_WHITE) {
@@ -402,7 +400,7 @@ MoveList legal_moves_for_piece(
                 }
             }
         } else if (n_pass == 1) {
-            if (wh_p == P_WHITE) {
+            if (wp == P_WHITE) {
                 captures_allowed = 1;
                 move_to_empty_allowed = 0;
                 max_distance = 1;
