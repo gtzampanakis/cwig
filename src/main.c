@@ -315,15 +315,34 @@ void apply_dir_ul(Sq *sq) { sq->f -= 1; sq->r += 1; };
 void apply_dir_dr(Sq *sq) { sq->f += 1; sq->r -= 1; };
 void apply_dir_dl(Sq *sq) { sq->f -= 1; sq->r -= 1; };
 
+void apply_dir_n0(Sq *sq) { sq->f += 2; sq->r += 1; };
+void apply_dir_n1(Sq *sq) { sq->f += 1; sq->r += 2; };
+void apply_dir_n2(Sq *sq) { sq->f += 2; sq->r -= 1; };
+void apply_dir_n3(Sq *sq) { sq->f += 1; sq->r -= 2; };
+void apply_dir_n4(Sq *sq) { sq->f -= 2; sq->r += 1; };
+void apply_dir_n5(Sq *sq) { sq->f -= 1; sq->r += 2; };
+void apply_dir_n6(Sq *sq) { sq->f -= 2; sq->r -= 1; };
+void apply_dir_n7(Sq *sq) { sq->f -= 1; sq->r -= 2; };
+
 ApplyDirFn rook_dir_fns[] = {
     apply_dir_u, apply_dir_d, apply_dir_l, apply_dir_r, NULL};
-
 ApplyDirFn bishop_dir_fns[] = {
     apply_dir_ur, apply_dir_ul, apply_dir_dr, apply_dir_dl, NULL};
-
 ApplyDirFn queen_dir_fns[] = {
     apply_dir_u, apply_dir_d, apply_dir_l, apply_dir_r,
     apply_dir_ur, apply_dir_ul, apply_dir_dr, apply_dir_dl, NULL};
+ApplyDirFn king_dir_fns[] = {
+    apply_dir_u, apply_dir_d, apply_dir_l, apply_dir_r,
+    apply_dir_ur, apply_dir_ul, apply_dir_dr, apply_dir_dl, NULL};
+ApplyDirFn knight_dir_fns[] = {
+    apply_dir_n0, apply_dir_n1, apply_dir_n2, apply_dir_n3,
+    apply_dir_n4, apply_dir_n5, apply_dir_n6, apply_dir_n7, NULL};
+ApplyDirFn white_pawn_move_to_empty_dir_fns[] = { apply_dir_u, NULL };
+ApplyDirFn black_pawn_move_to_empty_dir_fns[] = { apply_dir_d, NULL };
+ApplyDirFn white_pawn_capture_dir_fns[] = {
+                apply_dir_ur, apply_dir_ul, NULL };
+ApplyDirFn black_pawn_capture_dir_fns[] = {
+                apply_dir_dr, apply_dir_dl, NULL };
 
 MoveList legal_moves_for_piece(
     Pos* pos, Sq sq0, Piece piece, MoveList *ml
@@ -332,36 +351,102 @@ MoveList legal_moves_for_piece(
 
     ApplyDirFn *dir_fns;
     Piece wh_p = piece_as_white(piece);
-    if (wh_p == R_WHITE) {
-        dir_fns = rook_dir_fns;
-    } else if (wh_p == B_WHITE) {
-        dir_fns = bishop_dir_fns;
-    } else if (wh_p == Q_WHITE) {
-        dir_fns = queen_dir_fns;
-    }
+    int move_to_empty_allowed;
+    int captures_allowed;
+    int max_distance;
 
-    ApplyDirFn dir_fn;
-    for (int i = 0; (dir_fn = dir_fns[i]) != NULL; i++) {
-        Sq sq = { .f = sq0.f, .r = sq0.r };
-        for (;;) {
-            dir_fn(&sq);
-            if (sq.f < 0 || sq.f > 7 || sq.r < 0 || sq.r> 7) { break; }
-            Piece found = get_piece_at_sq(pos, sq);
-            Color found_color = piece_color(found);
-            if (found == PIECE_EMPTY) {
-                Move *move = move_appended_to_move_list(ml);
-                move->from = sq0;
-                move->to = sq;
-            } else if (own_color == found_color) {
-                break;
+    for (int n_pass = 0; n_pass < 2; n_pass++) {
+        if (n_pass == 0) {
+            if (wh_p == R_WHITE) {
+                captures_allowed = 1;
+                move_to_empty_allowed = 1;
+                dir_fns = rook_dir_fns;
+                max_distance = 9999;
+            } else if (wh_p == B_WHITE) {
+                captures_allowed = 1;
+                move_to_empty_allowed = 1;
+                dir_fns = bishop_dir_fns;
+                max_distance = 9999;
+            } else if (wh_p == Q_WHITE) {
+                captures_allowed = 1;
+                move_to_empty_allowed = 1;
+                dir_fns = queen_dir_fns;
+                max_distance = 9999;
+            } else if (wh_p == K_WHITE) {
+                captures_allowed = 1;
+                move_to_empty_allowed = 1;
+                dir_fns = king_dir_fns;
+                max_distance = 1;
+            } else if (wh_p == N_WHITE) {
+                captures_allowed = 1;
+                move_to_empty_allowed = 1;
+                dir_fns = knight_dir_fns;
+                max_distance = 1;
+            } else if (wh_p == P_WHITE) {
+                captures_allowed = 0;
+                move_to_empty_allowed = 1;
+                if (own_color == COLOR_WHITE) {
+                    dir_fns = white_pawn_move_to_empty_dir_fns;
+                    if (sq0.r == 1) {
+                        max_distance = 2;
+                    } else {
+                        max_distance = 1;
+                    }
+                } else {
+                    dir_fns = black_pawn_move_to_empty_dir_fns;
+                    if (sq0.r == 6) {
+                        max_distance = 2;
+                    } else {
+                        max_distance = 1;
+                    }
+                }
+            }
+        } else if (n_pass == 1) {
+            if (wh_p == P_WHITE) {
+                captures_allowed = 1;
+                move_to_empty_allowed = 0;
+                max_distance = 1;
+                if (own_color == COLOR_WHITE) {
+                    dir_fns = white_pawn_capture_dir_fns;
+                } else {
+                    dir_fns = black_pawn_capture_dir_fns;
+                }
             } else {
-                Move *move = move_appended_to_move_list(ml);
-                move->from = sq0;
-                move->to = sq;
                 break;
             }
         }
+        ApplyDirFn dir_fn;
+        for (int i = 0; (dir_fn = dir_fns[i]) != NULL; i++) {
+            Sq sq = { .f = sq0.f, .r = sq0.r };
+            int d = max_distance;
+            for (;;) {
+                dir_fn(&sq);
+                if (sq.f < 0 || sq.f > 7 || sq.r < 0 || sq.r> 7) { break; }
+                Piece found = get_piece_at_sq(pos, sq);
+                Color found_color = piece_color(found);
+                if (found == PIECE_EMPTY) {
+                    if (move_to_empty_allowed) {
+                        Move *move = move_appended_to_move_list(ml);
+                        move->from = sq0;
+                        move->to = sq;
+                    } else {
+                        break;
+                    }
+                } else if (own_color == found_color) {
+                    break;
+                } else {
+                    if (captures_allowed) {
+                        Move *move = move_appended_to_move_list(ml);
+                        move->from = sq0;
+                        move->to = sq;
+                    }
+                    break;
+                }
+                if (--d == 0) { break; }
+            }
+        }
     }
+
 }
 
 int main() {
@@ -375,8 +460,8 @@ int main() {
     Pos *pos = decode_fen(empty_fen);
 
     MoveList ml = make_move_list();
-    Sq sq = make_sq(3, 3);
-    legal_moves_for_piece(pos, sq, Q_BLACK, &ml);
+    Sq sq = make_sq(4, 6);
+    legal_moves_for_piece(pos, sq, P_BLACK, &ml);
     for (int i = 0; i < ml.len; i++) {
         Move move2 = *(ml.data + i);
         print_sq(move2.to);
