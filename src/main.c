@@ -41,6 +41,8 @@
 #define N_FILES 8
 #define N_RANKS 8
 
+#define CHECKMATE_VAL 99999999
+
 typedef char Piece;
 typedef char Castling;
 typedef char Direction;
@@ -79,9 +81,12 @@ Direction ALL_DIRECTIONS[16] = {
     DIR_NDL, DIR_NLD, DIR_NLU, DIR_NUL,
 };
 
+typedef struct Pos Pos;
+
 typedef struct Move {
     Sq from;
     Sq to;
+    Pos *leads_to;
 } Move;
 
 typedef struct MoveList {
@@ -123,7 +128,7 @@ void truncate_move_list(MoveList *ml) {
     ml->data = reallocarray(ml->data, ml->len, sizeof(Move));
 }
 
-typedef struct Pos {
+struct Pos {
     Piece placement[N_FILES][N_RANKS];
     Color active_color;
     Castling castling;
@@ -135,7 +140,7 @@ typedef struct Pos {
     int is_king_in_stalemate;
 
     MoveList moves;
-} Pos;
+};
 
 Pos *make_position() {
      Pos *p = malloc(sizeof (Pos));
@@ -143,11 +148,6 @@ Pos *make_position() {
          printf("Unable to allocation memory for position. Aborting...");
          abort();
      }
-     //for (int i = 0; i < N_FILES; i++) {
-     //    for (int j = 0; j < N_RANKS; j++) {
-     //        p->placement[i][j] = PIECE_EMPTY;
-     //    }
-     //}
      p->en_passant.f = 0;
      p->en_passant.r = 0;
      p->castling = 0;
@@ -170,6 +170,23 @@ void set_piece_at_sq(Pos *pos, Sq sq, Piece piece) {
 
 Piece get_piece_at_sq(Pos *pos, Sq sq) {
     return pos->placement[sq.f][sq.r];
+}
+
+Val piece_val(Piece piece) {
+    Val v;
+    if (piece == P_WHITE) { v = 1; }
+    else if (piece == R_WHITE) { v = 5; }
+    else if (piece == N_WHITE) { v = 3; }
+    else if (piece == B_WHITE) { v = 3; }
+    else if (piece == Q_WHITE) { v = 9; }
+    else if (piece == K_WHITE) { v = 9999; }
+    else if (piece == P_BLACK) { v = -1; }
+    else if (piece == R_BLACK) { v = -5; }
+    else if (piece == N_BLACK) { v = -3; }
+    else if (piece == B_BLACK) { v = -3; }
+    else if (piece == Q_BLACK) { v = -9; }
+    else if (piece == K_BLACK) { v = -9999; }
+    return v;
 }
 
 File algf_to_f(char algf) {
@@ -198,6 +215,32 @@ void print_sq(Sq sq) {
     sq_to_algsq(sq, str);
     printf("%c%c\n", str[0], str[1]);
 }
+
+Val position_static_val(Pos *pos) {
+    Val v;
+    if (pos->is_king_in_checkmate) {
+        if (pos->active_color == COLOR_WHITE) {
+            v = CHECKMATE_VAL;
+        } else if (pos->active_color == COLOR_BLACK) {
+            v = -CHECKMATE_VAL;
+        }
+    } else if (pos->is_king_in_stalemate) {
+        v = 0;
+    } else {
+        for (int f = 0; f < N_FILES; f++) {
+            for (int r = 0; r < N_RANKS; r++) {
+                Sq sq = make_sq(f, r);
+                Piece found = get_piece_at_sq(pos, sq);
+                if (found != PIECE_EMPTY) {
+                    v += piece_val(found);
+                }
+            }
+        }
+    }
+    return v;
+}
+
+//Val position_val_at_ply
 
 Pos *decode_fen(char *fen_string) {
     int state = 0;
@@ -250,21 +293,45 @@ Pos *decode_fen(char *fen_string) {
                 set_piece_at_sq(p, sq, P_WHITE);
                 sq.f += 1;
             } else if (c == '1') {
-                sq.f += 1;
+                for (int j = 0; j < 1; j++) {
+                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    sq.f += 1;
+                }
             } else if (c == '2') {
-                sq.f += 2;
+                for (int j = 0; j < 2; j++) {
+                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    sq.f += 1;
+                }
             } else if (c == '3') {
-                sq.f += 3;
+                for (int j = 0; j < 3; j++) {
+                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    sq.f += 1;
+                }
             } else if (c == '4') {
-                sq.f += 4;
+                for (int j = 0; j < 4; j++) {
+                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    sq.f += 1;
+                }
             } else if (c == '5') {
-                sq.f += 5;
+                for (int j = 0; j < 5; j++) {
+                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    sq.f += 1;
+                }
             } else if (c == '6') {
-                sq.f += 6;
+                for (int j = 0; j < 6; j++) {
+                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    sq.f += 1;
+                }
             } else if (c == '7') {
-                sq.f += 7;
+                for (int j = 0; j < 7; j++) {
+                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    sq.f += 1;
+                }
             } else if (c == '8') {
-                sq.f += 8;
+                for (int j = 0; j < 8; j++) {
+                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    sq.f += 1;
+                }
             } else if (c == '/') {
                 sq.f = 0;
                 sq.r--;
@@ -365,6 +432,14 @@ ApplyDirFn white_pawn_capture_dir_fns[] = {
 ApplyDirFn black_pawn_capture_dir_fns[] = {
                 apply_dir_dr, apply_dir_dl, NULL };
 
+Pos *position_after_move(Pos *pos, Move *move) {
+    Pos *new_pos = make_position();
+    memcpy(new_pos->placement, pos->placement, N_FILES * N_RANKS);
+    set_piece_at_sq(new_pos, move->to, get_piece_at_sq(new_pos, move->from));
+    set_piece_at_sq(new_pos, move->from, PIECE_EMPTY);
+    return new_pos;
+}
+
 void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
     Color own_color = piece_color(piece);
 
@@ -448,6 +523,7 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                         Move *move = move_appended_to_move_list(ml);
                         move->from = sq0;
                         move->to = sq;
+                        move->leads_to = position_after_move(pos, move);
                     } else {
                         break;
                     }
@@ -458,6 +534,7 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                         Move *move = move_appended_to_move_list(ml);
                         move->from = sq0;
                         move->to = sq;
+                        move->leads_to = position_after_move(pos, move);
                     }
                     break;
                 }
@@ -571,7 +648,6 @@ void set_legal_moves_for_position(Pos *pos) {
             Piece found = get_piece_at_sq(pos, sq);
             Color found_color = piece_color(found);
             if (active_color == found_color) {
-                //print_sq(sq);
                 append_legal_moves_for_piece(pos, sq, found, &pos->moves);
             }
         }
@@ -592,14 +668,6 @@ void set_is_king_in_checkmate(Pos *pos) {
 
 void set_is_king_in_stalemate(Pos *pos) {
     pos->is_king_in_stalemate = is_king_in_stalemate(pos);
-}
-
-Pos *position_after_move(Pos *pos, Move move) {
-    Pos *new_pos = make_position();
-    memcpy(new_pos->placement, pos->placement, N_FILES * N_RANKS);
-    set_piece_at_sq(new_pos, move.to, get_piece_at_sq(new_pos, move.from));
-    set_piece_at_sq(new_pos, move.from, PIECE_EMPTY);
-    return new_pos;
 }
 
 void explore_position(Pos *pos) {
@@ -637,6 +705,7 @@ int main() {
     //    print_sq(move.to);
     //}
 
+    printf("%f\n", position_static_val(pos));
     free_position(pos);
 
     printf("Done.\n");
