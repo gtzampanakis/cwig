@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define POSITION_MEMORY_SIZE (1024 * 1024)
 
@@ -142,11 +143,11 @@ Pos *make_position() {
          printf("Unable to allocation memory for position. Aborting...");
          abort();
      }
-     for (int i = 0; i < N_FILES; i++) {
-         for (int j = 0; j < N_RANKS; j++) {
-             p->placement[i][j] = PIECE_EMPTY;
-         }
-     }
+     //for (int i = 0; i < N_FILES; i++) {
+     //    for (int j = 0; j < N_RANKS; j++) {
+     //        p->placement[i][j] = PIECE_EMPTY;
+     //    }
+     //}
      p->en_passant.f = 0;
      p->en_passant.r = 0;
      p->castling = 0;
@@ -308,8 +309,20 @@ Color piece_color(Piece piece) {
     return 0b11000 & piece;
 }
 
+Color toggled_color(Color color) {
+    if (color == COLOR_WHITE) {
+        return COLOR_BLACK;
+    } else if (color == COLOR_BLACK) {
+        return COLOR_WHITE;
+    }
+}
+
 Piece piece_as_white(Piece piece) {
     return 0b00111 & piece;
+}
+
+Piece piece_as_black(Piece piece) {
+    return 0b11000 | piece;
 }
 
 typedef void (*ApplyDirFn)(Sq*);
@@ -579,6 +592,14 @@ void set_is_king_in_checkmate(Pos *pos) {
 
 void set_is_king_in_stalemate(Pos *pos) {
     pos->is_king_in_stalemate = is_king_in_stalemate(pos);
+}
+
+Pos *position_after_move(Pos *pos, Move move) {
+    Pos *new_pos = make_position();
+    memcpy(new_pos->placement, pos->placement, N_FILES * N_RANKS);
+    set_piece_at_sq(new_pos, move.to, get_piece_at_sq(new_pos, move.from));
+    set_piece_at_sq(new_pos, move.from, PIECE_EMPTY);
+    return new_pos;
 }
 
 void explore_position(Pos *pos) {
