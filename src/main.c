@@ -145,6 +145,8 @@ struct Pos {
     MoveList moves;
 };
 
+int is_king_in_check(Pos *pos);
+
 Pos *make_position() {
      Pos *p = malloc(sizeof (Pos));
      p->is_explored = 0;
@@ -165,6 +167,7 @@ Pos *make_position() {
 }
 
 Pos *free_position(Pos* pos) {
+    free_move_list(&pos->moves);
     free(pos);
 }
 
@@ -532,10 +535,21 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                 Color found_color = piece_color(found);
                 if (found == PIECE_EMPTY) {
                     if (move_to_empty_allowed) {
-                        Move *move = move_appended_to_move_list(ml);
-                        move->from = sq0;
-                        move->to = sq;
-                        move->leads_to = position_after_move(pos, move);
+                        Move move = {.from = sq0, .to = sq};
+                        Pos *next_pos = position_after_move(pos, &move);
+                        next_pos->active_color =
+                            toggled_color(next_pos->active_color);
+                        if (!is_king_in_check(next_pos)) {
+                            Move *move_appended =
+                                move_appended_to_move_list(ml);
+                            move_appended->from = move.from;
+                            move_appended->to = move.to;
+                            move_appended->leads_to = next_pos;
+                            next_pos->active_color =
+                                toggled_color(next_pos->active_color);
+                        } else {
+                            free_position(next_pos);
+                        }
                     } else {
                         break;
                     }
@@ -543,10 +557,21 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                     break;
                 } else {
                     if (captures_allowed) {
-                        Move *move = move_appended_to_move_list(ml);
-                        move->from = sq0;
-                        move->to = sq;
-                        move->leads_to = position_after_move(pos, move);
+                        Move move = {.from = sq0, .to = sq};
+                        Pos *next_pos = position_after_move(pos, &move);
+                        next_pos->active_color =
+                            toggled_color(next_pos->active_color);
+                        if (!is_king_in_check(next_pos)) {
+                            Move *move_appended =
+                                move_appended_to_move_list(ml);
+                            move_appended->from = move.from;
+                            move_appended->to = move.to;
+                            move_appended->leads_to = next_pos;
+                            next_pos->active_color =
+                                toggled_color(next_pos->active_color);
+                        } else {
+                            free_position(next_pos);
+                        }
                     }
                     break;
                 }
@@ -588,6 +613,15 @@ int is_king_in_square_in_check(Pos *pos, Sq sq0) {
                         found_as_white == Q_WHITE ||
                         found_as_white == K_WHITE && d <= 1
                     )
+                        ||
+                    (
+                        dir_fn == apply_dir_ur
+                        || dir_fn == apply_dir_ul
+                        || dir_fn == apply_dir_dl
+                        || dir_fn == apply_dir_dr
+                    )
+                        &&
+                    ( found_as_white == B_WHITE )
                 ) {
                     return 1;
                 }
@@ -728,18 +762,14 @@ void print_move(Move *move) {
 Val position_val_at_ply(Pos *pos, Ply ply) {
     Val sign;
     explore_position(pos);
-    if (ply == 0) {
+    if (ply == 0 || pos->is_king_in_checkmate || pos->is_king_in_stalemate) {
         return position_static_val(pos);
     } else {
         Val best = -CHECKMATE_VAL;
-        if (pos->active_color == COLOR_WHITE) { sign = 1; }
-        else if (pos->active_color == COLOR_BLACK) { sign = -1; }
+        if (pos->active_color == COLOR_WHITE) { sign = -1; }
+        else if (pos->active_color == COLOR_BLACK) { sign = 1; }
         for (int i = 0; i < pos->moves.len; i++) {
             Move move = pos->moves.data[i];
-            //printf("Leads to placement:\n");
-            //print_placement(move.leads_to);
-            //printf("Static val of next position: %f\n",
-            //            position_static_val(move.leads_to));
             Val unnormalized = position_val_at_ply(move.leads_to, ply-1);
             Val normalized = sign * unnormalized;
             if (normalized > best) {
@@ -755,32 +785,24 @@ int main() {
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 123 55";
     char fen_mate_in_2[] =
         "r1b2k1r/ppp1bppp/8/1B1Q4/5q2/2P5/PPP2PPP/R3R1K1 w - - 1 0";
+    char mated[] =
+        "r1bbRk1r/ppp2ppp/8/1B6/5q2/2P5/PPP2PPP/R5K1 b - - 1 1";
     char empty_fen[] = "8/8/8/8/8/8/8/8 w - - 0 1";
-    char fen_problematic_shows_no_valid_moves[] =
-                "8/4k3/3N1N2/4Q3/1B6/8/1K6/8 b - - 0 1";
     char fen[] = "8/4k3/3P1P2/4Q3/1B6/8/1K6/8 w - - 0 1";
 
-    Pos *pos = decode_fen(fen_mate_in_2);
+    Pos *pos = decode_fen("r1bb1k1r/ppp2ppp/8/1B6/5q2/2P5/PPP2PPP/R3R1K1 w - - 1 1");
+    explore_position(pos);
     print_placement(pos);
 
-    //MoveList ml;
-    //init_move_list(&ml);
-    //Sq sq = make_sq(4, 6);
-    //append_legal_moves_for_piece(pos, sq, P_BLACK, &ml);
-    //for (int i = 0; i < ml.len; i++) {
-    //    Move move2 = *(ml.data + i);
-    //    print_sq(move2.to);
-    //}
-    //printf("%d\n", is_king_in_check(pos));
-    //free_move_list(&ml);
+    for (int i = 0; i < pos->moves.len; i++) {
+        Move move = pos->moves.data[i];
+        print_move(&move);
+    }
     
-    //for (int i = 0; i < pos->moves.len; i++) {
-    //    Move move = pos->moves.data[i];
-    //    print_sq(move.from);
-    //    print_sq(move.to);
-    //}
-
-    printf("%f\n", position_val_at_ply(pos, 3));
+    printf("%f\n", position_val_at_ply(pos, 1));
+    printf("%d\n", pos->is_king_in_check);
+    printf("%d\n", pos->is_king_in_checkmate);
+    printf("%d\n", pos->is_king_in_stalemate);
     free_position(pos);
 
     printf("Number of positions explored: %d\n", n_pos_explored);
