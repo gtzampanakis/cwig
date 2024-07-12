@@ -6,4 +6,4 @@ echo
 echo
 echo
 date
-gcc src/main.c -o bin/cwig.out && time bin/cwig.out
+gcc src/main.c -O0 -o bin/cwig.out && time bin/cwig.out

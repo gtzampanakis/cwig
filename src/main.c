@@ -43,13 +43,15 @@
 
 #define CHECKMATE_VAL 99999999
 
+int n_pos_explored = 0;
+
 typedef char Piece;
 typedef char Castling;
 typedef char Direction;
 typedef char File;
 typedef char Rank;
 typedef char Color;
-typedef unsigned int Ply;
+typedef int Ply;
 typedef double Val;
 
 typedef struct {
@@ -129,6 +131,7 @@ void truncate_move_list(MoveList *ml) {
 }
 
 struct Pos {
+    int is_explored;
     Piece placement[N_FILES][N_RANKS];
     Color active_color;
     Castling castling;
@@ -144,6 +147,7 @@ struct Pos {
 
 Pos *make_position() {
      Pos *p = malloc(sizeof (Pos));
+     p->is_explored = 0;
      if (p == NULL) {
          printf("Unable to allocation memory for position. Aborting...");
          abort();
@@ -213,34 +217,13 @@ void sq_to_algsq(Sq sq, char *str) {
 void print_sq(Sq sq) {
     char str[2];
     sq_to_algsq(sq, str);
-    printf("%c%c\n", str[0], str[1]);
+    printf("%c%c", str[0], str[1]);
 }
 
-Val position_static_val(Pos *pos) {
-    Val v;
-    if (pos->is_king_in_checkmate) {
-        if (pos->active_color == COLOR_WHITE) {
-            v = CHECKMATE_VAL;
-        } else if (pos->active_color == COLOR_BLACK) {
-            v = -CHECKMATE_VAL;
-        }
-    } else if (pos->is_king_in_stalemate) {
-        v = 0;
-    } else {
-        for (int f = 0; f < N_FILES; f++) {
-            for (int r = 0; r < N_RANKS; r++) {
-                Sq sq = make_sq(f, r);
-                Piece found = get_piece_at_sq(pos, sq);
-                if (found != PIECE_EMPTY) {
-                    v += piece_val(found);
-                }
-            }
-        }
-    }
-    return v;
+void print_sq_nl(Sq sq) {
+    print_sq(sq);
+    printf("\n");
 }
-
-//Val position_val_at_ply
 
 Pos *decode_fen(char *fen_string) {
     int state = 0;
@@ -434,10 +417,39 @@ ApplyDirFn black_pawn_capture_dir_fns[] = {
 
 Pos *position_after_move(Pos *pos, Move *move) {
     Pos *new_pos = make_position();
-    memcpy(new_pos->placement, pos->placement, N_FILES * N_RANKS);
-    set_piece_at_sq(new_pos, move->to, get_piece_at_sq(new_pos, move->from));
+    for (int f = 0; f < N_FILES; f++) {
+        for (int r = 0; r < N_RANKS; r++) {
+            Sq sq = make_sq(f, r);
+            set_piece_at_sq(new_pos, sq, get_piece_at_sq(pos, sq));
+        }
+    }
+    set_piece_at_sq(new_pos, move->to, get_piece_at_sq(pos, move->from));
     set_piece_at_sq(new_pos, move->from, PIECE_EMPTY);
+    new_pos->active_color = toggled_color(pos->active_color);
     return new_pos;
+}
+
+void print_placement(Pos *pos) {
+    for (int r = N_RANKS - 1; r >= 0; r--) {
+        for (int f = 0; f < N_FILES; f++) {
+            Sq sq = make_sq(f, r);
+            Piece found = get_piece_at_sq(pos, sq);
+            if (found == PIECE_EMPTY) { printf("."); }
+            else if (found == P_WHITE) { printf("P"); }
+            else if (found == R_WHITE) { printf("R"); }
+            else if (found == N_WHITE) { printf("N"); }
+            else if (found == B_WHITE) { printf("B"); }
+            else if (found == Q_WHITE) { printf("Q"); }
+            else if (found == K_WHITE) { printf("K"); }
+            else if (found == P_BLACK) { printf("p"); }
+            else if (found == R_BLACK) { printf("r"); }
+            else if (found == N_BLACK) { printf("n"); }
+            else if (found == B_BLACK) { printf("b"); }
+            else if (found == Q_BLACK) { printf("q"); }
+            else if (found == K_BLACK) { printf("k"); }
+        }
+        printf("\n");
+    }
 }
 
 void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
@@ -671,22 +683,85 @@ void set_is_king_in_stalemate(Pos *pos) {
 }
 
 void explore_position(Pos *pos) {
-    pos->is_king_in_check = is_king_in_check(pos);
-    set_legal_moves_for_position(pos);
-    set_is_king_in_checkmate(pos);
-    set_is_king_in_stalemate(pos);
+    if (!pos->is_explored) {
+        pos->is_king_in_check = is_king_in_check(pos);
+        set_legal_moves_for_position(pos);
+        set_is_king_in_checkmate(pos);
+        set_is_king_in_stalemate(pos);
+        pos->is_explored = 1;
+        n_pos_explored += 1;
+    }
+}
+
+Val position_static_val(Pos *pos) {
+    Val v;
+    explore_position(pos);
+    if (pos->is_king_in_checkmate) {
+        if (pos->active_color == COLOR_WHITE) {
+            v = CHECKMATE_VAL;
+        } else if (pos->active_color == COLOR_BLACK) {
+            v = -CHECKMATE_VAL;
+        }
+    } else if (pos->is_king_in_stalemate) {
+        v = 0;
+    } else {
+        for (int f = 0; f < N_FILES; f++) {
+            for (int r = 0; r < N_RANKS; r++) {
+                Sq sq = make_sq(f, r);
+                Piece found = get_piece_at_sq(pos, sq);
+                if (found != PIECE_EMPTY) {
+                    v += piece_val(found);
+                }
+            }
+        }
+    }
+    return v;
+}
+
+void print_move(Move *move) {
+    print_sq(move->from);
+    printf("->");
+    print_sq(move->to);
+    printf("\n");
+}
+
+Val position_val_at_ply(Pos *pos, Ply ply) {
+    Val sign;
+    explore_position(pos);
+    if (ply == 0) {
+        return position_static_val(pos);
+    } else {
+        Val best = -CHECKMATE_VAL;
+        if (pos->active_color == COLOR_WHITE) { sign = 1; }
+        else if (pos->active_color == COLOR_BLACK) { sign = -1; }
+        for (int i = 0; i < pos->moves.len; i++) {
+            Move move = pos->moves.data[i];
+            //printf("Leads to placement:\n");
+            //print_placement(move.leads_to);
+            //printf("Static val of next position: %f\n",
+            //            position_static_val(move.leads_to));
+            Val unnormalized = position_val_at_ply(move.leads_to, ply-1);
+            Val normalized = sign * unnormalized;
+            if (normalized > best) {
+                best = normalized;
+            }
+        }
+        return best/sign;
+    }
 }
 
 int main() {
     char starting_fen[] =
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 123 55";
+    char fen_mate_in_2[] =
+        "r1b2k1r/ppp1bppp/8/1B1Q4/5q2/2P5/PPP2PPP/R3R1K1 w - - 1 0";
     char empty_fen[] = "8/8/8/8/8/8/8/8 w - - 0 1";
     char fen_problematic_shows_no_valid_moves[] =
                 "8/4k3/3N1N2/4Q3/1B6/8/1K6/8 b - - 0 1";
     char fen[] = "8/4k3/3P1P2/4Q3/1B6/8/1K6/8 w - - 0 1";
 
-    Pos *pos = decode_fen(starting_fen);
-    explore_position(pos);
+    Pos *pos = decode_fen(fen_mate_in_2);
+    print_placement(pos);
 
     //MoveList ml;
     //init_move_list(&ml);
@@ -705,8 +780,10 @@ int main() {
     //    print_sq(move.to);
     //}
 
-    printf("%f\n", position_static_val(pos));
+    printf("%f\n", position_val_at_ply(pos, 3));
     free_position(pos);
+
+    printf("Number of positions explored: %d\n", n_pos_explored);
 
     printf("Done.\n");
     return 0;
