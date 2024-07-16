@@ -43,6 +43,10 @@
 
 #define CHECKMATE_VAL 99999999
 
+#define WINNER_UNDECIDED 0
+#define WINNER_WHITE 1
+#define WINNER_BLACK -1
+
 int n_pos_explored = 0;
 
 typedef char Piece;
@@ -58,6 +62,12 @@ typedef struct {
     File f;
     Rank r;
 } Sq;
+
+typedef struct {
+    Val val;
+    int winner;
+    int is_draw;
+} EvalResult;
 
 const Direction DIR_U = 0;
 const Direction DIR_R = 1;
@@ -159,9 +169,9 @@ Pos *make_position() {
      p->castling = 0;
      p->halfmoves = 0;
      p->fullmoves = 0;
-     p->is_king_in_check = -1;
-     p->is_king_in_checkmate = -1;
-     p->is_king_in_stalemate = -1;
+     p->is_king_in_check = -2;
+     p->is_king_in_checkmate = -2;
+     p->is_king_in_stalemate = -2;
      init_move_list(&p->moves);
      return p;
 }
@@ -453,6 +463,7 @@ void print_placement(Pos *pos) {
         }
         printf("\n");
     }
+    printf("\n");
 }
 
 void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
@@ -539,7 +550,7 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                         Pos *next_pos = position_after_move(pos, &move);
                         next_pos->active_color =
                             toggled_color(next_pos->active_color);
-                        if (!is_king_in_check(next_pos)) {
+                        if (is_king_in_check(next_pos) != 1) {
                             Move *move_appended =
                                 move_appended_to_move_list(ml);
                             move_appended->from = move.from;
@@ -561,7 +572,7 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                         Pos *next_pos = position_after_move(pos, &move);
                         next_pos->active_color =
                             toggled_color(next_pos->active_color);
-                        if (!is_king_in_check(next_pos)) {
+                        if (is_king_in_check(next_pos) != -1) {
                             Move *move_appended =
                                 move_appended_to_move_list(ml);
                             move_appended->from = move.from;
@@ -621,7 +632,11 @@ int is_king_in_square_in_check(Pos *pos, Sq sq0) {
                         || dir_fn == apply_dir_dr
                     )
                         &&
-                    ( found_as_white == B_WHITE )
+                    (
+                        found_as_white == B_WHITE ||
+                        found_as_white == Q_WHITE ||
+                        found_as_white == K_WHITE && d <= 1 
+                    )
                 ) {
                     return 1;
                 }
@@ -683,7 +698,7 @@ int is_king_in_check(Pos *pos) {
             }
         }
     }
-    return 0;
+    return -1;
 }
 
 void set_legal_moves_for_position(Pos *pos) {
@@ -701,11 +716,11 @@ void set_legal_moves_for_position(Pos *pos) {
 }
 
 int is_king_in_checkmate(Pos *pos) {
-    return pos->is_king_in_check & (pos->moves.len == 0);
+    return (pos->is_king_in_check == 1) && (pos->moves.len == 0);
 }
 
 int is_king_in_stalemate(Pos *pos) {
-    return (!pos->is_king_in_check) & (pos->moves.len == 0);
+    return (pos->is_king_in_check == 0) && (pos->moves.len == 0);
 }
 
 void set_is_king_in_checkmate(Pos *pos) {
@@ -727,29 +742,38 @@ void explore_position(Pos *pos) {
     }
 }
 
-Val position_static_val(Pos *pos) {
-    Val v;
+EvalResult position_static_val(Pos *pos) {
+    EvalResult out;
+    out.val = 0;
+    out.is_draw = 0;
+    out.winner = WINNER_UNDECIDED;
     explore_position(pos);
-    if (pos->is_king_in_checkmate) {
+    if (pos->is_king_in_checkmate == 1) {
         if (pos->active_color == COLOR_WHITE) {
-            v = CHECKMATE_VAL;
+            out.winner = WINNER_BLACK;
         } else if (pos->active_color == COLOR_BLACK) {
-            v = -CHECKMATE_VAL;
+            out.winner = WINNER_WHITE;
         }
-    } else if (pos->is_king_in_stalemate) {
-        v = 0;
+    } else if (pos->is_king_in_stalemate == 1) {
+        out.is_draw = 1;
+        out.val = 0;
     } else {
+        out.winner = WINNER_UNDECIDED;
         for (int f = 0; f < N_FILES; f++) {
             for (int r = 0; r < N_RANKS; r++) {
                 Sq sq = make_sq(f, r);
                 Piece found = get_piece_at_sq(pos, sq);
                 if (found != PIECE_EMPTY) {
-                    v += piece_val(found);
+                    out.val += piece_val(found);
                 }
             }
         }
     }
-    return v;
+    return out;
+}
+
+void print_eval_result(EvalResult *er) {
+    printf("EvalResult: winner: %d, val: %f\n", er->winner, er->val);
 }
 
 void print_move(Move *move) {
@@ -759,25 +783,54 @@ void print_move(Move *move) {
     printf("\n");
 }
 
-Val position_val_at_ply(Pos *pos, Ply ply) {
-    Val sign;
+int cmp_eval_results(const void *aa, const void *bb) {
+    /* Return less than 0 if a is better, more than 0 if b is better, 0 if
+     * neither is better.  Better is the one where white is better. */
+    const EvalResult *a = aa;
+    const EvalResult *b = bb;
+    int r;
+    if (a->winner == WINNER_UNDECIDED && b->winner == WINNER_UNDECIDED) {
+        r = b->val - a->val;
+    }
+    else if (a->winner == WINNER_UNDECIDED && b->winner == WINNER_BLACK) r = -1;
+    else if (a->winner == WINNER_UNDECIDED && b->winner == WINNER_WHITE) r = 1;
+
+    else if (a->winner == WINNER_WHITE && b->winner == WINNER_UNDECIDED) r = -1;
+    else if (a->winner == WINNER_WHITE && b->winner == WINNER_BLACK) r = -1;
+    else if (a->winner == WINNER_WHITE && b->winner == WINNER_WHITE) r = 0;
+
+    else if (a->winner == WINNER_BLACK && b->winner == WINNER_UNDECIDED) r = 1;
+    else if (a->winner == WINNER_BLACK && b->winner == WINNER_BLACK) r = 0;
+    else if (a->winner == WINNER_BLACK && b->winner == WINNER_WHITE) r = 1;
+
+    return r;
+}
+
+EvalResult position_val_at_ply(Pos *pos, Ply ply) {
+    EvalResult result;
     explore_position(pos);
-    if (ply == 0 || pos->is_king_in_checkmate || pos->is_king_in_stalemate) {
-        return position_static_val(pos);
+    if (
+        ply == 0
+        || (pos->is_king_in_checkmate == 1)
+        || (pos->is_king_in_stalemate == 1)
+       )
+    {
+        result = position_static_val(pos);
     } else {
-        Val best = -CHECKMATE_VAL;
-        if (pos->active_color == COLOR_WHITE) { sign = -1; }
-        else if (pos->active_color == COLOR_BLACK) { sign = 1; }
+        EvalResult *eval_results = calloc(pos->moves.len, sizeof(EvalResult));
         for (int i = 0; i < pos->moves.len; i++) {
             Move move = pos->moves.data[i];
-            Val unnormalized = position_val_at_ply(move.leads_to, ply-1);
-            Val normalized = sign * unnormalized;
-            if (normalized > best) {
-                best = normalized;
-            }
+            eval_results[i] = position_val_at_ply(move.leads_to, ply-1);
         }
-        return best/sign;
+        qsort(eval_results, pos->moves.len, sizeof(EvalResult), cmp_eval_results);
+        if (pos->active_color == COLOR_WHITE) {
+            result = eval_results[0];
+        } else {
+            result = eval_results[pos->moves.len-1];
+        }
+        free(eval_results);
     }
+    return result;
 }
 
 int main() {
@@ -790,19 +843,23 @@ int main() {
     char empty_fen[] = "8/8/8/8/8/8/8/8 w - - 0 1";
     char fen[] = "8/4k3/3P1P2/4Q3/1B6/8/1K6/8 w - - 0 1";
 
-    Pos *pos = decode_fen("r1bb1k1r/ppp2ppp/8/1B6/5q2/2P5/PPP2PPP/R3R1K1 w - - 1 1");
+    Pos *pos = decode_fen("7k/8/8/8/8/4q3/3P4/2K5 w - - 0 1");
     explore_position(pos);
     print_placement(pos);
 
-    for (int i = 0; i < pos->moves.len; i++) {
-        Move move = pos->moves.data[i];
-        print_move(&move);
-    }
+    //for (int i = 0; i < pos->moves.len; i++) {
+    //    Move move = pos->moves.data[i];
+    //    print_move(&move);
+    //}
     
-    printf("%f\n", position_val_at_ply(pos, 1));
-    printf("%d\n", pos->is_king_in_check);
-    printf("%d\n", pos->is_king_in_checkmate);
-    printf("%d\n", pos->is_king_in_stalemate);
+    //printf("%f\n", position_val_at_ply(pos, 3));
+    //printf("is_king_in_check: %d\n", pos->is_king_in_check);
+    //printf("is_king_in_checkmate: %d\n", pos->is_king_in_checkmate);
+    //printf("is_king_in_stalemate: %d\n", pos->is_king_in_stalemate);
+    EvalResult er = position_val_at_ply(pos, 2);
+    printf("\n");
+    print_eval_result(&er);
+
     free_position(pos);
 
     printf("Number of positions explored: %d\n", n_pos_explored);
