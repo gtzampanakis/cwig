@@ -572,7 +572,7 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                         Pos *next_pos = position_after_move(pos, &move);
                         next_pos->active_color =
                             toggled_color(next_pos->active_color);
-                        if (is_king_in_check(next_pos) != -1) {
+                        if (is_king_in_check(next_pos) != 1) {
                             Move *move_appended =
                                 move_appended_to_move_list(ml);
                             move_appended->from = move.from;
@@ -847,16 +847,16 @@ int main() {
     explore_position(pos);
     print_placement(pos);
 
-    //for (int i = 0; i < pos->moves.len; i++) {
-    //    Move move = pos->moves.data[i];
-    //    print_move(&move);
-    //}
+    for (int i = 0; i < pos->moves.len; i++) {
+        Move move = pos->moves.data[i];
+        print_move(&move);
+    }
     
     //printf("%f\n", position_val_at_ply(pos, 3));
     //printf("is_king_in_check: %d\n", pos->is_king_in_check);
     //printf("is_king_in_checkmate: %d\n", pos->is_king_in_checkmate);
     //printf("is_king_in_stalemate: %d\n", pos->is_king_in_stalemate);
-    EvalResult er = position_val_at_ply(pos, 2);
+    EvalResult er = position_val_at_ply(pos, 1);
     printf("\n");
     print_eval_result(&er);
 
