@@ -843,20 +843,20 @@ int main() {
     char empty_fen[] = "8/8/8/8/8/8/8/8 w - - 0 1";
     char fen[] = "8/4k3/3P1P2/4Q3/1B6/8/1K6/8 w - - 0 1";
 
-    Pos *pos = decode_fen("7k/8/8/8/8/4q3/3P4/2K5 w - - 0 1");
+    Pos *pos = decode_fen(fen_mate_in_2);
     explore_position(pos);
     print_placement(pos);
 
-    for (int i = 0; i < pos->moves.len; i++) {
-        Move move = pos->moves.data[i];
-        print_move(&move);
-    }
+    //for (int i = 0; i < pos->moves.len; i++) {
+    //    Move move = pos->moves.data[i];
+    //    print_move(&move);
+    //}
     
     //printf("%f\n", position_val_at_ply(pos, 3));
     //printf("is_king_in_check: %d\n", pos->is_king_in_check);
     //printf("is_king_in_checkmate: %d\n", pos->is_king_in_checkmate);
     //printf("is_king_in_stalemate: %d\n", pos->is_king_in_stalemate);
-    EvalResult er = position_val_at_ply(pos, 1);
+    EvalResult er = position_val_at_ply(pos, 3);
     printf("\n");
     print_eval_result(&er);
 
