@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define POSITION_MEMORY_SIZE (1024 * 1024)
+#define MEM_ALLOC_SIZE (1024 * 1024)
 
 #define COLOR_WHITE 0b00000
 #define COLOR_BLACK 0b11000
@@ -107,8 +107,22 @@ typedef struct MoveList {
     Move *data;
 } MoveList;
 
+void *mem_to_alloc;
+
+void *cwig_calloc(size_t nmemb, size_t size) {
+    return calloc(nmemb, size);
+}
+
+void *cwig_malloc(size_t size) {
+    return malloc(size);
+}
+
+void *cwig_reallocarray(void *ptr, size_t nmemb, size_t size) {
+    return reallocarray(ptr, nmemb, size);
+}
+
 void init_move_list(MoveList *ml) {
-    ml->data = calloc(MOVE_LIST_INITIAL_CAPACITY, sizeof(Move));
+    ml->data = cwig_calloc(MOVE_LIST_INITIAL_CAPACITY, sizeof(Move));
     ml->len = 0;
     ml->capacity = MOVE_LIST_INITIAL_CAPACITY;
 }
@@ -125,7 +139,7 @@ void free_move_list(MoveList *ml) {
 Move *move_appended_to_move_list(MoveList *ml) {
     if (ml->len == ml->capacity) {
         int new_capacity = ml->capacity + MOVE_LIST_INITIAL_CAPACITY;
-        ml->data = reallocarray(ml->data, new_capacity, sizeof(Move)); 
+        ml->data = cwig_reallocarray(ml->data, new_capacity, sizeof(Move)); 
         if (ml->data == NULL) {
             printf("reallocarray returned NULL. Aborting");
             abort();
@@ -137,7 +151,7 @@ Move *move_appended_to_move_list(MoveList *ml) {
 
 void truncate_move_list(MoveList *ml) {
     ml->capacity = ml->len;
-    ml->data = reallocarray(ml->data, ml->len, sizeof(Move));
+    ml->data = cwig_reallocarray(ml->data, ml->len, sizeof(Move));
 }
 
 struct Pos {
@@ -158,7 +172,7 @@ struct Pos {
 int is_king_in_check(Pos *pos);
 
 Pos *make_position() {
-     Pos *p = malloc(sizeof (Pos));
+     Pos *p = cwig_malloc(sizeof (Pos));
      p->is_explored = 0;
      if (p == NULL) {
          printf("Unable to allocation memory for position. Aborting...");
@@ -809,6 +823,7 @@ int cmp_eval_results(const void *aa, const void *bb) {
 EvalResult position_val_at_ply(Pos *pos, Ply ply) {
     EvalResult result;
     explore_position(pos);
+    mem_to_alloc = malloc(MEM_ALLOC_SIZE);
     if (
         ply == 0
         || (pos->is_king_in_checkmate == 1)
@@ -817,7 +832,7 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
     {
         result = position_static_val(pos);
     } else {
-        EvalResult *eval_results = calloc(pos->moves.len, sizeof(EvalResult));
+        EvalResult *eval_results = cwig_calloc(pos->moves.len, sizeof(EvalResult));
         for (int i = 0; i < pos->moves.len; i++) {
             Move move = pos->moves.data[i];
             eval_results[i] = position_val_at_ply(move.leads_to, ply-1);
