@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MEM_ALLOC_SIZE (1024 * 1024)
+#define MEM_ALLOC_SIZE (1 * 1024 * 1024)
 
 #define COLOR_WHITE 0b00000
 #define COLOR_BLACK 0b11000
@@ -35,8 +35,6 @@
 #define CASTLING_BLACK_QUEENSIDE    0b0100;
 #define CASTLING_WHITE_KINGSIDE     0b0010;
 #define CASTLING_WHITE_QUEENSIDE    0b0001;
-
-#define MOVE_LIST_INITIAL_CAPACITY 64
 
 #define N_FILES 8
 #define N_RANKS 8
@@ -102,29 +100,52 @@ typedef struct Move {
 } Move;
 
 typedef struct MoveList {
-    int len;
-    int capacity;
+    short len;
     Move *data;
 } MoveList;
 
-void *mem_to_alloc;
+typedef struct MemPool {
+    char *name;
+    void *data;
+    void *offset;
+    size_t base_size;
+    size_t current_size;
+} MemPool;
 
-void *cwig_calloc(size_t nmemb, size_t size) {
-    return calloc(nmemb, size);
+MemPool make_mem_pool(char *name) {
+    MemPool result;
+    result.name = name;
+    result.data = malloc(MEM_ALLOC_SIZE);
+    result.base_size = MEM_ALLOC_SIZE;
+    result.current_size = MEM_ALLOC_SIZE;
+    result.offset = result.data;
+    if (result.data == NULL) {
+        printf("malloc returned NULL. Aborting...\n");
+        abort();
+    }
+    return result;
 }
 
-void *cwig_malloc(size_t size) {
-    return malloc(size);
+MemPool pos_mem_pool;
+MemPool move_mem_pool;
+
+void *cwig_malloc(MemPool *mp, size_t size) {
+    if (pos_mem_pool.offset - pos_mem_pool.data + size > pos_mem_pool.current_size) {
+        printf("Exceeded current_size for mem pool \"%s\", aborting...\n", mp->name);
+        abort();
+    }
+    void *result = pos_mem_pool.offset;
+    pos_mem_pool.offset += size;
+    //printf("Allocated %d bytes\n", size);
+    return result;
 }
 
-void *cwig_reallocarray(void *ptr, size_t nmemb, size_t size) {
-    return reallocarray(ptr, nmemb, size);
+void *cwig_calloc(MemPool *mp, size_t nmemb, size_t size) {
+    return cwig_malloc(mp, nmemb * size);
 }
 
-void init_move_list(MoveList *ml) {
-    ml->data = cwig_calloc(MOVE_LIST_INITIAL_CAPACITY, sizeof(Move));
+void move_list_init(MoveList *ml) {
     ml->len = 0;
-    ml->capacity = MOVE_LIST_INITIAL_CAPACITY;
 }
 
 Sq make_sq(File f, Rank r) {
@@ -132,39 +153,31 @@ Sq make_sq(File f, Rank r) {
     return sq;
 }
 
-void free_move_list(MoveList *ml) {
-    free(ml->data);
-}
-
 Move *move_appended_to_move_list(MoveList *ml) {
-    if (ml->len == ml->capacity) {
-        int new_capacity = ml->capacity + MOVE_LIST_INITIAL_CAPACITY;
-        ml->data = cwig_reallocarray(ml->data, new_capacity, sizeof(Move)); 
-        if (ml->data == NULL) {
-            printf("reallocarray returned NULL. Aborting");
-            abort();
-        }
-        ml->capacity = new_capacity;
+    if (ml->len == 0) {
+        ml->data = move_mem_pool.offset;
     }
-    return ml->data + ml->len++;
-}
-
-void truncate_move_list(MoveList *ml) {
-    ml->capacity = ml->len;
-    ml->data = cwig_reallocarray(ml->data, ml->len, sizeof(Move));
+    if (move_mem_pool.offset - move_mem_pool.data + sizeof(Move) > move_mem_pool.current_size) {
+        printf("Exceeded current_size for mem pool \"pos\", aborting...\n");
+        abort();
+    }
+    Move *result = move_mem_pool.offset;
+    ml->len++;
+    move_mem_pool.offset += sizeof(Move);
+    return result;
 }
 
 struct Pos {
-    int is_explored;
+    char is_explored;
     Piece placement[N_FILES][N_RANKS];
     Color active_color;
     Castling castling;
     Sq en_passant;
-    int halfmoves;
-    int fullmoves;
-    int is_king_in_check;
-    int is_king_in_checkmate;
-    int is_king_in_stalemate;
+    short halfmoves;
+    short fullmoves;
+    char is_king_in_check;
+    char is_king_in_checkmate;
+    char is_king_in_stalemate;
 
     MoveList moves;
 };
@@ -172,27 +185,22 @@ struct Pos {
 int is_king_in_check(Pos *pos);
 
 Pos *make_position() {
-     Pos *p = cwig_malloc(sizeof (Pos));
-     p->is_explored = 0;
-     if (p == NULL) {
-         printf("Unable to allocation memory for position. Aborting...");
-         abort();
-     }
-     p->en_passant.f = 0;
-     p->en_passant.r = 0;
-     p->castling = 0;
-     p->halfmoves = 0;
-     p->fullmoves = 0;
-     p->is_king_in_check = -2;
-     p->is_king_in_checkmate = -2;
-     p->is_king_in_stalemate = -2;
-     init_move_list(&p->moves);
-     return p;
-}
-
-Pos *free_position(Pos* pos) {
-    free_move_list(&pos->moves);
-    free(pos);
+    Pos *p = cwig_malloc(&pos_mem_pool, sizeof (Pos));
+    p->is_explored = 0;
+    if (p == NULL) {
+        printf("Unable to allocation memory for position. Aborting...\n");
+        abort();
+    }
+    p->en_passant.f = 0;
+    p->en_passant.r = 0;
+    p->castling = 0;
+    p->halfmoves = 0;
+    p->fullmoves = 0;
+    p->is_king_in_check = -2;
+    p->is_king_in_checkmate = -2;
+    p->is_king_in_stalemate = -2;
+    move_list_init(&p->moves);
+    return p;
 }
 
 void set_piece_at_sq(Pos *pos, Sq sq, Piece piece) {
@@ -572,8 +580,6 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                             move_appended->leads_to = next_pos;
                             next_pos->active_color =
                                 toggled_color(next_pos->active_color);
-                        } else {
-                            free_position(next_pos);
                         }
                     } else {
                         break;
@@ -594,8 +600,6 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                             move_appended->leads_to = next_pos;
                             next_pos->active_color =
                                 toggled_color(next_pos->active_color);
-                        } else {
-                            free_position(next_pos);
                         }
                     }
                     break;
@@ -715,6 +719,13 @@ int is_king_in_check(Pos *pos) {
     return -1;
 }
 
+void print_move(Move *move) {
+    print_sq(move->from);
+    printf("->");
+    print_sq(move->to);
+    printf("\n");
+}
+
 void set_legal_moves_for_position(Pos *pos) {
     Color active_color = pos->active_color;
     for (int f = 0; f < N_FILES; f++) {
@@ -727,6 +738,13 @@ void set_legal_moves_for_position(Pos *pos) {
             }
         }
     }
+    //printf("For position %p with %d to play, found %d moves\n",
+    //                        pos, pos->active_color, pos->moves.len);
+    //print_placement(pos);
+    //for (int i = 0; i < pos->moves.len; i++) {
+    //    print_move(&(pos->moves.data[i]));
+    //}
+
 }
 
 int is_king_in_checkmate(Pos *pos) {
@@ -790,13 +808,6 @@ void print_eval_result(EvalResult *er) {
     printf("EvalResult: winner: %d, val: %f\n", er->winner, er->val);
 }
 
-void print_move(Move *move) {
-    print_sq(move->from);
-    printf("->");
-    print_sq(move->to);
-    printf("\n");
-}
-
 int cmp_eval_results(const void *aa, const void *bb) {
     /* Return less than 0 if a is better, more than 0 if b is better, 0 if
      * neither is better.  Better is the one where white is better. */
@@ -823,7 +834,6 @@ int cmp_eval_results(const void *aa, const void *bb) {
 EvalResult position_val_at_ply(Pos *pos, Ply ply) {
     EvalResult result;
     explore_position(pos);
-    mem_to_alloc = malloc(MEM_ALLOC_SIZE);
     if (
         ply == 0
         || (pos->is_king_in_checkmate == 1)
@@ -832,7 +842,15 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
     {
         result = position_static_val(pos);
     } else {
-        EvalResult *eval_results = cwig_calloc(pos->moves.len, sizeof(EvalResult));
+        EvalResult *eval_results = cwig_calloc(&pos_mem_pool, pos->moves.len, sizeof(EvalResult));
+        //printf("\n");
+        //print_placement(pos);
+        //printf("MoveList at %p\n", pos->moves.data);
+        //for (int i = 0; i < pos->moves.len; i++) {
+        //    Move move = pos->moves.data[i];
+        //    printf("Will examine move: ");
+        //    print_move(&move);
+        //}
         for (int i = 0; i < pos->moves.len; i++) {
             Move move = pos->moves.data[i];
             eval_results[i] = position_val_at_ply(move.leads_to, ply-1);
@@ -843,7 +861,6 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
         } else {
             result = eval_results[pos->moves.len-1];
         }
-        free(eval_results);
     }
     return result;
 }
@@ -858,26 +875,48 @@ int main() {
     char empty_fen[] = "8/8/8/8/8/8/8/8 w - - 0 1";
     char fen[] = "8/4k3/3P1P2/4Q3/1B6/8/1K6/8 w - - 0 1";
 
+    pos_mem_pool = make_mem_pool("pos");
+    move_mem_pool = make_mem_pool("move");
+
     Pos *pos = decode_fen(fen_mate_in_2);
     explore_position(pos);
-    print_placement(pos);
+    //print_placement(pos);
 
     //for (int i = 0; i < pos->moves.len; i++) {
     //    Move move = pos->moves.data[i];
     //    print_move(&move);
     //}
+
+    //printf("\n");
+
+    //Pos *pos2 = decode_fen(fen_mate_in_2);
+    //explore_position(pos2);
+    //print_placement(pos2);
+
+    //for (int i = 0; i < pos2->moves.len; i++) {
+    //    Move move = pos2->moves.data[i];
+    //    print_move(&move);
+    //}
+
+    //return;
     
     //printf("%f\n", position_val_at_ply(pos, 3));
     //printf("is_king_in_check: %d\n", pos->is_king_in_check);
     //printf("is_king_in_checkmate: %d\n", pos->is_king_in_checkmate);
     //printf("is_king_in_stalemate: %d\n", pos->is_king_in_stalemate);
     EvalResult er = position_val_at_ply(pos, 3);
+    printf("sizeof(Pos): %lu\n", sizeof(Pos));
+    printf("sizeof(Move): %lu\n", sizeof(Move));
     printf("\n");
     print_eval_result(&er);
 
-    free_position(pos);
+    //free(pos_mem_pool.data);
 
     printf("Number of positions explored: %d\n", n_pos_explored);
+    printf("Number of bytes taken by pos mem pool: %li\n",
+            pos_mem_pool.offset - pos_mem_pool.data);
+    printf("Number of bytes taken by moves mem pool: %li\n",
+            move_mem_pool.offset - move_mem_pool.data);
 
     printf("Done.\n");
     return 0;
