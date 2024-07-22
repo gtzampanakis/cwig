@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MEM_ALLOC_SIZE (1 * 1024 * 1024)
+#define MEM_ALLOC_SIZE (1024 * 1024 * 1024)
 
 #define COLOR_WHITE 0b00000
 #define COLOR_BLACK 0b11000
@@ -129,6 +129,8 @@ MemPool make_mem_pool(char *name) {
 MemPool pos_mem_pool;
 MemPool move_mem_pool;
 
+int positions_allocated = 0;
+
 void *cwig_malloc(MemPool *mp, size_t size) {
     if (pos_mem_pool.offset - pos_mem_pool.data + size > pos_mem_pool.current_size) {
         printf("Exceeded current_size for mem pool \"%s\", aborting...\n", mp->name);
@@ -137,6 +139,8 @@ void *cwig_malloc(MemPool *mp, size_t size) {
     void *result = pos_mem_pool.offset;
     pos_mem_pool.offset += size;
     //printf("Allocated %d bytes\n", size);
+    //printf("cwig_malloc: returning %p\n", result);
+    positions_allocated += 1;
     return result;
 }
 
@@ -184,6 +188,8 @@ struct Pos {
 
 int is_king_in_check(Pos *pos);
 
+int positions_made = 0;
+
 Pos *make_position() {
     Pos *p = cwig_malloc(&pos_mem_pool, sizeof (Pos));
     p->is_explored = 0;
@@ -200,6 +206,7 @@ Pos *make_position() {
     p->is_king_in_checkmate = -2;
     p->is_king_in_stalemate = -2;
     move_list_init(&p->moves);
+    positions_made += 1;
     return p;
 }
 
@@ -913,6 +920,8 @@ int main() {
     //free(pos_mem_pool.data);
 
     printf("Number of positions explored: %d\n", n_pos_explored);
+    printf("Number of positions allocated: %d\n", positions_allocated);
+    printf("Number of positions made: %d\n", positions_made);
     printf("Number of bytes taken by pos mem pool: %li\n",
             pos_mem_pool.offset - pos_mem_pool.data);
     printf("Number of bytes taken by moves mem pool: %li\n",
