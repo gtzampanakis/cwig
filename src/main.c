@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -922,10 +923,10 @@ int main() {
     printf("Number of positions explored: %d\n", n_pos_explored);
     printf("Number of positions allocated: %d\n", positions_allocated);
     printf("Number of positions made: %d\n", positions_made);
-    printf("Number of bytes taken by pos mem pool: %li\n",
-            pos_mem_pool.offset - pos_mem_pool.data);
-    printf("Number of bytes taken by moves mem pool: %li\n",
-            move_mem_pool.offset - move_mem_pool.data);
+    printf("Space taken by pos mem pool: %li MB\n",
+            (pos_mem_pool.offset - pos_mem_pool.data) / 1024 / 1024);
+    printf("Space taken by moves mem pool: %li MB\n",
+            (move_mem_pool.offset - move_mem_pool.data) / 1024 / 1024);
 
     printf("Done.\n");
     return 0;
