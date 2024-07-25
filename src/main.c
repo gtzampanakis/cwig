@@ -3,8 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MEM_ALLOC_SIZE (1024 * 1024 * 1024)
-
 #define COLOR_WHITE 0b00000
 #define COLOR_BLACK 0b11000
 #define COLOR_EMPTY 0b10000
@@ -97,13 +95,17 @@ typedef struct Pos Pos;
 typedef struct Move {
     Sq from;
     Sq to;
-    Pos *leads_to;
 } Move;
 
 typedef struct MoveList {
+    short capacity;
     short len;
     Move *data;
 } MoveList;
+
+void free_movelist(MoveList *ml) {
+    free(ml->data);
+}
 
 typedef struct MemPool {
     char *name;
@@ -113,44 +115,12 @@ typedef struct MemPool {
     size_t current_size;
 } MemPool;
 
-MemPool make_mem_pool(char *name) {
-    MemPool result;
-    result.name = name;
-    result.data = malloc(MEM_ALLOC_SIZE);
-    result.base_size = MEM_ALLOC_SIZE;
-    result.current_size = MEM_ALLOC_SIZE;
-    result.offset = result.data;
-    if (result.data == NULL) {
-        printf("malloc returned NULL. Aborting...\n");
-        abort();
-    }
-    return result;
-}
-
-MemPool pos_mem_pool;
-MemPool move_mem_pool;
-
 int positions_allocated = 0;
 
-void *cwig_malloc(MemPool *mp, size_t size) {
-    if (pos_mem_pool.offset - pos_mem_pool.data + size > pos_mem_pool.current_size) {
-        printf("Exceeded current_size for mem pool \"%s\", aborting...\n", mp->name);
-        abort();
-    }
-    void *result = pos_mem_pool.offset;
-    pos_mem_pool.offset += size;
-    //printf("Allocated %d bytes\n", size);
-    //printf("cwig_malloc: returning %p\n", result);
-    positions_allocated += 1;
-    return result;
-}
-
-void *cwig_calloc(MemPool *mp, size_t nmemb, size_t size) {
-    return cwig_malloc(mp, nmemb * size);
-}
-
 void move_list_init(MoveList *ml) {
+    ml->capacity = 128;
     ml->len = 0;
+    ml->data = calloc(ml->capacity, sizeof(Move));
 }
 
 Sq make_sq(File f, Rank r) {
@@ -159,16 +129,11 @@ Sq make_sq(File f, Rank r) {
 }
 
 Move *move_appended_to_move_list(MoveList *ml) {
-    if (ml->len == 0) {
-        ml->data = move_mem_pool.offset;
-    }
-    if (move_mem_pool.offset - move_mem_pool.data + sizeof(Move) > move_mem_pool.current_size) {
-        printf("Exceeded current_size for mem pool \"pos\", aborting...\n");
+    if (ml->len >= ml->capacity) {
+        printf("Exceeded capacity for MoveList, aborting...\n");
         abort();
     }
-    Move *result = move_mem_pool.offset;
-    ml->len++;
-    move_mem_pool.offset += sizeof(Move);
+    Move *result = ml->data + ml->len++;
     return result;
 }
 
@@ -187,12 +152,17 @@ struct Pos {
     MoveList moves;
 };
 
+void free_pos(Pos *pos) {
+    free_movelist(&(pos->moves));
+    free(pos);
+}
+
 int is_king_in_check(Pos *pos);
 
 int positions_made = 0;
 
 Pos *make_position() {
-    Pos *p = cwig_malloc(&pos_mem_pool, sizeof (Pos));
+    Pos *p = malloc(sizeof (Pos));
     p->is_explored = 0;
     if (p == NULL) {
         printf("Unable to allocation memory for position. Aborting...\n");
@@ -585,10 +555,8 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                                 move_appended_to_move_list(ml);
                             move_appended->from = move.from;
                             move_appended->to = move.to;
-                            move_appended->leads_to = next_pos;
-                            next_pos->active_color =
-                                toggled_color(next_pos->active_color);
                         }
+                        free_pos(next_pos);
                     } else {
                         break;
                     }
@@ -605,10 +573,8 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                                 move_appended_to_move_list(ml);
                             move_appended->from = move.from;
                             move_appended->to = move.to;
-                            move_appended->leads_to = next_pos;
-                            next_pos->active_color =
-                                toggled_color(next_pos->active_color);
                         }
+                        free_pos(next_pos);
                     }
                     break;
                 }
@@ -850,18 +816,12 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
     {
         result = position_static_val(pos);
     } else {
-        EvalResult *eval_results = cwig_calloc(&pos_mem_pool, pos->moves.len, sizeof(EvalResult));
-        //printf("\n");
-        //print_placement(pos);
-        //printf("MoveList at %p\n", pos->moves.data);
-        //for (int i = 0; i < pos->moves.len; i++) {
-        //    Move move = pos->moves.data[i];
-        //    printf("Will examine move: ");
-        //    print_move(&move);
-        //}
+        EvalResult *eval_results = calloc(pos->moves.len, sizeof(EvalResult));
         for (int i = 0; i < pos->moves.len; i++) {
             Move move = pos->moves.data[i];
-            eval_results[i] = position_val_at_ply(move.leads_to, ply-1);
+            Pos *next_pos = position_after_move(pos, &move);
+            eval_results[i] = position_val_at_ply(next_pos, ply-1);
+            free_pos(next_pos);
         }
         qsort(eval_results, pos->moves.len, sizeof(EvalResult), cmp_eval_results);
         if (pos->active_color == COLOR_WHITE) {
@@ -869,6 +829,7 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
         } else {
             result = eval_results[pos->moves.len-1];
         }
+        free(eval_results);
     }
     return result;
 }
@@ -882,9 +843,6 @@ int main() {
         "r1bbRk1r/ppp2ppp/8/1B6/5q2/2P5/PPP2PPP/R5K1 b - - 1 1";
     char empty_fen[] = "8/8/8/8/8/8/8/8 w - - 0 1";
     char fen[] = "8/4k3/3P1P2/4Q3/1B6/8/1K6/8 w - - 0 1";
-
-    pos_mem_pool = make_mem_pool("pos");
-    move_mem_pool = make_mem_pool("move");
 
     Pos *pos = decode_fen(fen_mate_in_2);
     explore_position(pos);
@@ -921,12 +879,11 @@ int main() {
     //free(pos_mem_pool.data);
 
     printf("Number of positions explored: %d\n", n_pos_explored);
-    printf("Number of positions allocated: %d\n", positions_allocated);
     printf("Number of positions made: %d\n", positions_made);
-    printf("Space taken by pos mem pool: %li MB\n",
-            (pos_mem_pool.offset - pos_mem_pool.data) / 1024 / 1024);
-    printf("Space taken by moves mem pool: %li MB\n",
-            (move_mem_pool.offset - move_mem_pool.data) / 1024 / 1024);
+    //printf("Space taken by pos mem pool: %li MB\n",
+    //        (pos_mem_pool.offset - pos_mem_pool.data) / 1024 / 1024);
+    //printf("Space taken by moves mem pool: %li MB\n",
+    //        (move_mem_pool.offset - move_mem_pool.data) / 1024 / 1024);
 
     printf("Done.\n");
     return 0;
