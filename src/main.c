@@ -157,8 +157,7 @@ int is_king_in_check(Pos *pos);
 
 int positions_made = 0;
 
-Pos *make_position() {
-    Pos *p = malloc(sizeof (Pos));
+void init_position(Pos *p) {
     p->is_explored = 0;
     if (p == NULL) {
         printf("Unable to allocation memory for position. Aborting...\n");
@@ -174,7 +173,6 @@ Pos *make_position() {
     p->is_king_in_stalemate = -2;
     move_list_init(&p->moves);
     positions_made += 1;
-    return p;
 }
 
 void set_piece_at_sq(Pos *pos, Sq sq, Piece piece) {
@@ -234,12 +232,13 @@ void print_sq_nl(Sq sq) {
     printf("\n");
 }
 
-Pos *decode_fen(char *fen_string) {
+Pos decode_fen(char *fen_string) {
     int state = 0;
     char en_passant_str[2];
     int en_passant_idx = 0;
 
-    Pos *p = make_position();
+    Pos p;
+    init_position(&p);
 
     int i = 0;
     char c;
@@ -249,79 +248,79 @@ Pos *decode_fen(char *fen_string) {
             state++;
         } else if (state == 0) {
             if (c == 'r') {
-                set_piece_at_sq(p, sq, R_BLACK);
+                set_piece_at_sq(&p, sq, R_BLACK);
                 sq.f += 1;
             } else if (c == 'n') {
-                set_piece_at_sq(p, sq, N_BLACK);
+                set_piece_at_sq(&p, sq, N_BLACK);
                 sq.f += 1;
             } else if (c == 'b') {
-                set_piece_at_sq(p, sq, B_BLACK);
+                set_piece_at_sq(&p, sq, B_BLACK);
                 sq.f += 1;
             } else if (c == 'q') {
-                set_piece_at_sq(p, sq, Q_BLACK);
+                set_piece_at_sq(&p, sq, Q_BLACK);
                 sq.f += 1;
             } else if (c == 'k') {
-                set_piece_at_sq(p, sq, K_BLACK);
+                set_piece_at_sq(&p, sq, K_BLACK);
                 sq.f += 1;
             } else if (c == 'p') {
-                set_piece_at_sq(p, sq, P_BLACK);
+                set_piece_at_sq(&p, sq, P_BLACK);
                 sq.f += 1;
             } else if (c == 'R') {
-                set_piece_at_sq(p, sq, R_WHITE);
+                set_piece_at_sq(&p, sq, R_WHITE);
                 sq.f += 1;
             } else if (c == 'N') {
-                set_piece_at_sq(p, sq, N_WHITE);
+                set_piece_at_sq(&p, sq, N_WHITE);
                 sq.f += 1;
             } else if (c == 'B') {
-                set_piece_at_sq(p, sq, B_WHITE);
+                set_piece_at_sq(&p, sq, B_WHITE);
                 sq.f += 1;
             } else if (c == 'Q') {
-                set_piece_at_sq(p, sq, Q_WHITE);
+                set_piece_at_sq(&p, sq, Q_WHITE);
                 sq.f += 1;
             } else if (c == 'K') {
-                set_piece_at_sq(p, sq, K_WHITE);
+                set_piece_at_sq(&p, sq, K_WHITE);
                 sq.f += 1;
             } else if (c == 'P') {
-                set_piece_at_sq(p, sq, P_WHITE);
+                set_piece_at_sq(&p, sq, P_WHITE);
                 sq.f += 1;
             } else if (c == '1') {
                 for (int j = 0; j < 1; j++) {
-                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    set_piece_at_sq(&p, sq, PIECE_EMPTY);
                     sq.f += 1;
                 }
             } else if (c == '2') {
                 for (int j = 0; j < 2; j++) {
-                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    set_piece_at_sq(&p, sq, PIECE_EMPTY);
                     sq.f += 1;
                 }
             } else if (c == '3') {
                 for (int j = 0; j < 3; j++) {
-                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    set_piece_at_sq(&p, sq, PIECE_EMPTY);
                     sq.f += 1;
                 }
             } else if (c == '4') {
                 for (int j = 0; j < 4; j++) {
-                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    set_piece_at_sq(&p, sq, PIECE_EMPTY);
                     sq.f += 1;
                 }
             } else if (c == '5') {
                 for (int j = 0; j < 5; j++) {
-                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    set_piece_at_sq(&p, sq, PIECE_EMPTY);
                     sq.f += 1;
                 }
             } else if (c == '6') {
                 for (int j = 0; j < 6; j++) {
-                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    set_piece_at_sq(&p, sq, PIECE_EMPTY);
                     sq.f += 1;
                 }
             } else if (c == '7') {
                 for (int j = 0; j < 7; j++) {
-                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    set_piece_at_sq(&p, sq, PIECE_EMPTY);
                     sq.f += 1;
                 }
             } else if (c == '8') {
                 for (int j = 0; j < 8; j++) {
-                    set_piece_at_sq(p, sq, PIECE_EMPTY);
+                    set_piece_at_sq(&p, sq, PIECE_EMPTY);
                     sq.f += 1;
                 }
             } else if (c == '/') {
@@ -330,19 +329,19 @@ Pos *decode_fen(char *fen_string) {
             }
         } else if (state == 1) {
             if (c == 'w') {
-                p->active_color = COLOR_WHITE;
+                p.active_color = COLOR_WHITE;
             } else if (c == 'b') {
-                p->active_color = COLOR_BLACK;
+                p.active_color = COLOR_BLACK;
             }
         } else if (state == 2) {
             if (c == 'K') {
-                p->castling |= CASTLING_BLACK_KINGSIDE;
+                p.castling |= CASTLING_BLACK_KINGSIDE;
             } else if (c == 'Q') {
-                p->castling |= CASTLING_BLACK_QUEENSIDE;
+                p.castling |= CASTLING_BLACK_QUEENSIDE;
             } else if (c == 'k') {
-                p->castling |= CASTLING_WHITE_KINGSIDE;
+                p.castling |= CASTLING_WHITE_KINGSIDE;
             } else if (c == 'q') {
-                p->castling |= CASTLING_WHITE_QUEENSIDE;
+                p.castling |= CASTLING_WHITE_QUEENSIDE;
             } else if (c == '-') {
                 ;
             }
@@ -350,14 +349,14 @@ Pos *decode_fen(char *fen_string) {
             en_passant_str[en_passant_idx++] = c;
         } else if (state == 4) {
             if (en_passant_str[0] != '-') {
-                p->en_passant.f = algf_to_f(en_passant_str[0]);
-                p->en_passant.r = algr_to_r(en_passant_str[1]);
+                p.en_passant.f = algf_to_f(en_passant_str[0]);
+                p.en_passant.r = algr_to_r(en_passant_str[1]);
             }
-            p->halfmoves *= 10;
-            p->halfmoves += (c - 48);
+            p.halfmoves *= 10;
+            p.halfmoves += (c - 48);
         } else if (state == 5) {
-            p->fullmoves *= 10;
-            p->fullmoves += (c - 48);
+            p.fullmoves *= 10;
+            p.fullmoves += (c - 48);
         }
     }
 
@@ -424,8 +423,8 @@ ApplyDirFn white_pawn_capture_dir_fns[] = {
 ApplyDirFn black_pawn_capture_dir_fns[] = {
                 apply_dir_dr, apply_dir_dl, NULL };
 
-Pos *position_after_move(Pos *pos, Move *move) {
-    Pos *new_pos = make_position();
+void position_after_move(Pos *pos, Move *move, Pos *new_pos) {
+    init_position(new_pos);
     for (int f = 0; f < N_FILES; f++) {
         for (int r = 0; r < N_RANKS; r++) {
             Sq sq = make_sq(f, r);
@@ -435,7 +434,6 @@ Pos *position_after_move(Pos *pos, Move *move) {
     set_piece_at_sq(new_pos, move->to, get_piece_at_sq(pos, move->from));
     set_piece_at_sq(new_pos, move->from, PIECE_EMPTY);
     new_pos->active_color = toggled_color(pos->active_color);
-    return new_pos;
 }
 
 void print_placement(Pos *pos) {
@@ -532,6 +530,7 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
             }
         }
         ApplyDirFn dir_fn;
+        Pos next_pos;
         for (int i = 0; (dir_fn = dir_fns[i]) != NULL; i++) {
             Sq sq = { .f = sq0.f, .r = sq0.r };
             int d = max_distance;
@@ -543,16 +542,15 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                 if (found == PIECE_EMPTY) {
                     if (move_to_empty_allowed) {
                         Move move = {.from = sq0, .to = sq};
-                        Pos *next_pos = position_after_move(pos, &move);
-                        next_pos->active_color =
-                            toggled_color(next_pos->active_color);
-                        if (is_king_in_check(next_pos) != 1) {
+                        position_after_move(pos, &move, &next_pos);
+                        next_pos.active_color =
+                            toggled_color(next_pos.active_color);
+                        if (is_king_in_check(&next_pos) != 1) {
                             Move *move_appended =
                                 move_appended_to_move_list(ml);
                             move_appended->from = move.from;
                             move_appended->to = move.to;
                         }
-                        free_pos(next_pos);
                     } else {
                         break;
                     }
@@ -561,16 +559,15 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                 } else {
                     if (captures_allowed) {
                         Move move = {.from = sq0, .to = sq};
-                        Pos *next_pos = position_after_move(pos, &move);
-                        next_pos->active_color =
-                            toggled_color(next_pos->active_color);
-                        if (is_king_in_check(next_pos) != 1) {
+                        position_after_move(pos, &move, &next_pos);
+                        next_pos.active_color =
+                            toggled_color(next_pos.active_color);
+                        if (is_king_in_check(&next_pos) != 1) {
                             Move *move_appended =
                                 move_appended_to_move_list(ml);
                             move_appended->from = move.from;
                             move_appended->to = move.to;
                         }
-                        free_pos(next_pos);
                     }
                     break;
                 }
@@ -813,11 +810,11 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
         result = position_static_val(pos);
     } else {
         EvalResult *eval_results = calloc(pos->moves.len, sizeof(EvalResult));
+        Pos next_pos;
         for (int i = 0; i < pos->moves.len; i++) {
             Move move = pos->moves.data[i];
-            Pos *next_pos = position_after_move(pos, &move);
-            eval_results[i] = position_val_at_ply(next_pos, ply-1);
-            free_pos(next_pos);
+            position_after_move(pos, &move, &next_pos);
+            eval_results[i] = position_val_at_ply(&next_pos, ply-1);
         }
         qsort(eval_results, pos->moves.len, sizeof(EvalResult), cmp_eval_results);
         if (pos->active_color == COLOR_WHITE) {
@@ -840,8 +837,8 @@ int main() {
     char empty_fen[] = "8/8/8/8/8/8/8/8 w - - 0 1";
     char fen[] = "8/4k3/3P1P2/4Q3/1B6/8/1K6/8 w - - 0 1";
 
-    Pos *pos = decode_fen(fen_mate_in_2);
-    explore_position(pos);
+    Pos pos = decode_fen(fen_mate_in_2);
+    explore_position(&pos);
     //print_placement(pos);
 
     //for (int i = 0; i < pos->moves.len; i++) {
@@ -866,7 +863,7 @@ int main() {
     //printf("is_king_in_check: %d\n", pos->is_king_in_check);
     //printf("is_king_in_checkmate: %d\n", pos->is_king_in_checkmate);
     //printf("is_king_in_stalemate: %d\n", pos->is_king_in_stalemate);
-    EvalResult er = position_val_at_ply(pos, 3);
+    EvalResult er = position_val_at_ply(&pos, 3);
     printf("sizeof(Pos): %lu\n", sizeof(Pos));
     printf("sizeof(Move): %lu\n", sizeof(Move));
     printf("\n");
