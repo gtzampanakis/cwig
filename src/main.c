@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define MOVE_LIST_CAPACITY 256
+
 #define COLOR_WHITE 0b00000
 #define COLOR_BLACK 0b11000
 #define COLOR_EMPTY 0b10000
@@ -100,12 +102,8 @@ typedef struct Move {
 typedef struct MoveList {
     short capacity;
     short len;
-    Move *data;
+    Move data[MOVE_LIST_CAPACITY];
 } MoveList;
-
-void free_movelist(MoveList *ml) {
-    free(ml->data);
-}
 
 typedef struct MemPool {
     char *name;
@@ -118,9 +116,8 @@ typedef struct MemPool {
 int positions_allocated = 0;
 
 void move_list_init(MoveList *ml) {
-    ml->capacity = 128;
+    ml->capacity = MOVE_LIST_CAPACITY;
     ml->len = 0;
-    ml->data = calloc(ml->capacity, sizeof(Move));
 }
 
 Sq make_sq(File f, Rank r) {
@@ -153,7 +150,6 @@ struct Pos {
 };
 
 void free_pos(Pos *pos) {
-    free_movelist(&(pos->moves));
     free(pos);
 }
 
