@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MOVE_LIST_CAPACITY 256
+#define MOVE_BUFFER_N_MOVES ( 100 * 1000 * 50 )
 
 #define COLOR_WHITE 0b00000
 #define COLOR_BLACK 0b11000
@@ -99,39 +99,14 @@ typedef struct Move {
     Sq to;
 } Move;
 
-typedef struct MoveList {
-    short capacity;
-    short len;
-    Move data[MOVE_LIST_CAPACITY];
-} MoveList;
-
-typedef struct MemPool {
-    char *name;
-    void *data;
-    void *offset;
-    size_t base_size;
-    size_t current_size;
-} MemPool;
+Move *move_buffer_start;
+Move *move_buffer_current;
 
 int positions_allocated = 0;
-
-void move_list_init(MoveList *ml) {
-    ml->capacity = MOVE_LIST_CAPACITY;
-    ml->len = 0;
-}
 
 Sq make_sq(File f, Rank r) {
     Sq sq = { .f = f, .r = r };
     return sq;
-}
-
-Move *move_appended_to_move_list(MoveList *ml) {
-    if (ml->len >= ml->capacity) {
-        printf("Exceeded capacity for MoveList, aborting...\n");
-        abort();
-    }
-    Move *result = ml->data + ml->len++;
-    return result;
 }
 
 struct Pos {
@@ -145,8 +120,8 @@ struct Pos {
     char is_king_in_check;
     char is_king_in_checkmate;
     char is_king_in_stalemate;
-
-    MoveList moves;
+    Move *p_moves;
+    int moves_len;
 };
 
 void free_pos(Pos *pos) {
@@ -159,10 +134,6 @@ int positions_made = 0;
 
 void init_position(Pos *p) {
     p->is_explored = 0;
-    if (p == NULL) {
-        printf("Unable to allocation memory for position. Aborting...\n");
-        abort();
-    }
     p->en_passant.f = 0;
     p->en_passant.r = 0;
     p->castling = 0;
@@ -171,7 +142,8 @@ void init_position(Pos *p) {
     p->is_king_in_check = -2;
     p->is_king_in_checkmate = -2;
     p->is_king_in_stalemate = -2;
-    move_list_init(&p->moves);
+    p->p_moves = move_buffer_current;
+    p->moves_len = 0;
     positions_made += 1;
 }
 
@@ -546,10 +518,13 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
                         next_pos.active_color =
                             toggled_color(next_pos.active_color);
                         if (is_king_in_check(&next_pos) != 1) {
-                            Move *move_appended =
-                                move_appended_to_move_list(&pos->moves);
-                            move_appended->from = move.from;
-                            move_appended->to = move.to;
+                            // Move *move_appended =
+                            //     move_appended_to_move_list(&pos->moves);
+                            // move_appended->from = move.from;
+                            // move_appended->to = move.to;
+                            pos->moves_len++;
+                            *move_buffer_current = move;
+                            move_buffer_current++;
                         }
                     } else {
                         break;
@@ -563,10 +538,13 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
                         next_pos.active_color =
                             toggled_color(next_pos.active_color);
                         if (is_king_in_check(&next_pos) != 1) {
-                            Move *move_appended =
-                                move_appended_to_move_list(&pos->moves);
-                            move_appended->from = move.from;
-                            move_appended->to = move.to;
+                            //Move *move_appended =
+                            //    move_appended_to_move_list(&pos->moves);
+                            //move_appended->from = move.from;
+                            //move_appended->to = move.to;
+                            pos->moves_len++;
+                            *move_buffer_current = move;
+                            move_buffer_current++;
                         }
                     }
                     break;
@@ -715,11 +693,11 @@ void set_legal_moves_for_position(Pos *pos) {
 }
 
 int is_king_in_checkmate(Pos *pos) {
-    return (pos->is_king_in_check == 1) && (pos->moves.len == 0);
+    return (pos->is_king_in_check == 1) && (pos->moves_len == 0);
 }
 
 int is_king_in_stalemate(Pos *pos) {
-    return (pos->is_king_in_check == 0) && (pos->moves.len == 0);
+    return (pos->is_king_in_check == 0) && (pos->moves_len == 0);
 }
 
 void set_is_king_in_checkmate(Pos *pos) {
@@ -809,18 +787,18 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
     {
         result = position_static_val(pos);
     } else {
-        EvalResult *eval_results = calloc(pos->moves.len, sizeof(EvalResult));
+        EvalResult *eval_results = calloc(pos->moves_len, sizeof(EvalResult));
         Pos next_pos;
-        for (int i = 0; i < pos->moves.len; i++) {
-            Move move = pos->moves.data[i];
+        for (int i = 0; i < pos->moves_len; i++) {
+            Move move = pos->p_moves[i];
             position_after_move(pos, &move, &next_pos);
             eval_results[i] = position_val_at_ply(&next_pos, ply-1);
         }
-        qsort(eval_results, pos->moves.len, sizeof(EvalResult), cmp_eval_results);
+        qsort(eval_results, pos->moves_len, sizeof(EvalResult), cmp_eval_results);
         if (pos->active_color == COLOR_WHITE) {
             result = eval_results[0];
         } else {
-            result = eval_results[pos->moves.len-1];
+            result = eval_results[pos->moves_len-1];
         }
         free(eval_results);
     }
@@ -828,6 +806,10 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
 }
 
 int main() {
+    
+    move_buffer_start = malloc(MOVE_BUFFER_N_MOVES * sizeof(Move));
+    move_buffer_current = move_buffer_start;
+
     char starting_fen[] =
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 123 55";
     char fen_mate_in_2[] =
@@ -839,44 +821,14 @@ int main() {
 
     Pos pos = decode_fen(fen_mate_in_2);
     explore_position(&pos);
-    //print_placement(pos);
-
-    //for (int i = 0; i < pos->moves.len; i++) {
-    //    Move move = pos->moves.data[i];
-    //    print_move(&move);
-    //}
-
-    //printf("\n");
-
-    //Pos *pos2 = decode_fen(fen_mate_in_2);
-    //explore_position(pos2);
-    //print_placement(pos2);
-
-    //for (int i = 0; i < pos2->moves.len; i++) {
-    //    Move move = pos2->moves.data[i];
-    //    print_move(&move);
-    //}
-
-    //return;
-    
-    //printf("%f\n", position_val_at_ply(pos, 3));
-    //printf("is_king_in_check: %d\n", pos->is_king_in_check);
-    //printf("is_king_in_checkmate: %d\n", pos->is_king_in_checkmate);
-    //printf("is_king_in_stalemate: %d\n", pos->is_king_in_stalemate);
     EvalResult er = position_val_at_ply(&pos, 3);
     printf("sizeof(Pos): %lu\n", sizeof(Pos));
     printf("sizeof(Move): %lu\n", sizeof(Move));
     printf("\n");
     print_eval_result(&er);
 
-    //free(pos_mem_pool.data);
-
     printf("Number of positions explored: %d\n", n_pos_explored);
     printf("Number of positions made: %d\n", positions_made);
-    //printf("Space taken by pos mem pool: %li MB\n",
-    //        (pos_mem_pool.offset - pos_mem_pool.data) / 1024 / 1024);
-    //printf("Space taken by moves mem pool: %li MB\n",
-    //        (move_mem_pool.offset - move_mem_pool.data) / 1024 / 1024);
 
     printf("Done.\n");
     return 0;
