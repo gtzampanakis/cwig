@@ -460,7 +460,7 @@ void print_placement(Pos *pos) {
     printf("\n");
 }
 
-void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
+void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
     Color own_color = piece_color(piece);
 
     ApplyDirFn *dir_fns;
@@ -547,7 +547,7 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                             toggled_color(next_pos.active_color);
                         if (is_king_in_check(&next_pos) != 1) {
                             Move *move_appended =
-                                move_appended_to_move_list(ml);
+                                move_appended_to_move_list(&pos->moves);
                             move_appended->from = move.from;
                             move_appended->to = move.to;
                         }
@@ -564,7 +564,7 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece, MoveList *ml) {
                             toggled_color(next_pos.active_color);
                         if (is_king_in_check(&next_pos) != 1) {
                             Move *move_appended =
-                                move_appended_to_move_list(ml);
+                                move_appended_to_move_list(&pos->moves);
                             move_appended->from = move.from;
                             move_appended->to = move.to;
                         }
@@ -701,7 +701,7 @@ void set_legal_moves_for_position(Pos *pos) {
             Piece found = get_piece_at_sq(pos, sq);
             Color found_color = piece_color(found);
             if (active_color == found_color) {
-                append_legal_moves_for_piece(pos, sq, found, &pos->moves);
+                append_legal_moves_for_piece(pos, sq, found);
             }
         }
     }
