@@ -513,17 +513,13 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
                 Color found_color = piece_color(found);
                 if (found == PIECE_EMPTY) {
                     if (move_to_empty_allowed) {
-                        Move move = {.from = sq0, .to = sq};
-                        position_after_move(pos, &move, &next_pos);
+                        move_buffer_current->from = sq0;
+                        move_buffer_current->to = sq;
+                        position_after_move(pos, move_buffer_current, &next_pos);
                         next_pos.active_color =
                             toggled_color(next_pos.active_color);
                         if (is_king_in_check(&next_pos) != 1) {
-                            // Move *move_appended =
-                            //     move_appended_to_move_list(&pos->moves);
-                            // move_appended->from = move.from;
-                            // move_appended->to = move.to;
                             pos->moves_len++;
-                            *move_buffer_current = move;
                             move_buffer_current++;
                         }
                     } else {
@@ -533,17 +529,13 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
                     break;
                 } else {
                     if (captures_allowed) {
-                        Move move = {.from = sq0, .to = sq};
-                        position_after_move(pos, &move, &next_pos);
+                        move_buffer_current->from = sq0;
+                        move_buffer_current->to = sq;
+                        position_after_move(pos, move_buffer_current, &next_pos);
                         next_pos.active_color =
                             toggled_color(next_pos.active_color);
                         if (is_king_in_check(&next_pos) != 1) {
-                            //Move *move_appended =
-                            //    move_appended_to_move_list(&pos->moves);
-                            //move_appended->from = move.from;
-                            //move_appended->to = move.to;
                             pos->moves_len++;
-                            *move_buffer_current = move;
                             move_buffer_current++;
                         }
                     }
