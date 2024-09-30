@@ -100,6 +100,7 @@ typedef struct Move {
 } Move;
 
 Move *move_buffer_start;
+Move *move_buffer_end;
 Move *move_buffer_current;
 
 int positions_allocated = 0;
@@ -513,6 +514,10 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
                 Color found_color = piece_color(found);
                 if (found == PIECE_EMPTY) {
                     if (move_to_empty_allowed) {
+                        if (move_buffer_current >= move_buffer_end) {
+                            printf("Move buffer exhausted. Aborting...");
+                            abort();
+                        }
                         move_buffer_current->from = sq0;
                         move_buffer_current->to = sq;
                         position_after_move(pos, move_buffer_current, &next_pos);
@@ -529,6 +534,10 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
                     break;
                 } else {
                     if (captures_allowed) {
+                        if (move_buffer_current >= move_buffer_end) {
+                            printf("Move buffer exhausted. Aborting...");
+                            abort();
+                        }
                         move_buffer_current->from = sq0;
                         move_buffer_current->to = sq;
                         position_after_move(pos, move_buffer_current, &next_pos);
@@ -799,8 +808,9 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
 
 int main() {
     
-    move_buffer_start = malloc(MOVE_BUFFER_N_MOVES * sizeof(Move));
+    move_buffer_start = calloc(MOVE_BUFFER_N_MOVES, sizeof(Move));
     move_buffer_current = move_buffer_start;
+    move_buffer_end = move_buffer_start + MOVE_BUFFER_N_MOVES;
 
     char starting_fen[] =
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 123 55";
@@ -821,6 +831,8 @@ int main() {
 
     printf("Number of positions explored: %d\n", n_pos_explored);
     printf("Number of positions made: %d\n", positions_made);
+
+    free(move_buffer_start);
 
     printf("Done.\n");
     return 0;
