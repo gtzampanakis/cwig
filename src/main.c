@@ -4,6 +4,9 @@
 #include <string.h>
 
 #define MOVE_BUFFER_N_MOVES ( 100 * 1000 * 50 )
+#define MOVE_LIST_NODE_BUFFER_N_MOVE_LIST_NODES (50 * 1000 * 50)
+
+#define PRINT_EVAL_AT_PLY_DIAGNOSTICS 0
 
 #define COLOR_WHITE 0b00000
 #define COLOR_BLACK 0b11000
@@ -62,12 +65,6 @@ typedef struct {
     Rank r;
 } Sq;
 
-typedef struct {
-    Val val;
-    int winner;
-    int is_draw;
-} EvalResult;
-
 const Direction DIR_U = 0;
 const Direction DIR_R = 1;
 const Direction DIR_D = 2;
@@ -99,9 +96,26 @@ typedef struct Move {
     Sq to;
 } Move;
 
-Move *move_buffer_start;
-Move *move_buffer_end;
-Move *move_buffer_current;
+typedef struct MoveListNode {
+    Move move;
+    struct MoveListNode *rest;
+} MoveListNode;
+
+Move move_buffer_start[MOVE_BUFFER_N_MOVES];
+Move *move_buffer_end = move_buffer_start + MOVE_BUFFER_N_MOVES;
+Move *move_buffer_current = move_buffer_start;
+
+MoveListNode move_list_node_buffer_start[MOVE_LIST_NODE_BUFFER_N_MOVE_LIST_NODES];
+MoveListNode *move_list_node_buffer_end = 
+    move_list_node_buffer_start + MOVE_LIST_NODE_BUFFER_N_MOVE_LIST_NODES;
+MoveListNode *move_list_node_buffer_current = move_list_node_buffer_start;
+
+typedef struct {
+    Val val;
+    int winner;
+    int is_draw;
+    MoveListNode *moves;
+} EvalResult;
 
 int positions_allocated = 0;
 
@@ -665,10 +679,10 @@ int is_king_in_check(Pos *pos) {
     return -1;
 }
 
-void print_move(Move *move) {
-    print_sq(move->from);
+void print_move(Move move) {
+    print_sq(move.from);
     printf("->");
-    print_sq(move->to);
+    print_sq(move.to);
     printf("\n");
 }
 
@@ -688,7 +702,7 @@ void set_legal_moves_for_position(Pos *pos) {
     //                        pos, pos->active_color, pos->moves.len);
     //print_placement(pos);
     //for (int i = 0; i < pos->moves.len; i++) {
-    //    print_move(&(pos->moves.data[i]));
+    //    print_move((pos->moves.data[i]));
     //}
 
 }
@@ -778,7 +792,8 @@ int cmp_eval_results(const void *aa, const void *bb) {
 }
 
 EvalResult position_val_at_ply(Pos *pos, Ply ply) {
-    EvalResult result;
+    EvalResult best_eval_result;
+    Move best_move;
     explore_position(pos);
     if (
         ply == 0
@@ -786,32 +801,47 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
         || (pos->is_king_in_stalemate == 1)
        )
     {
-        result = position_static_val(pos);
+        best_eval_result = position_static_val(pos);
     } else {
-        EvalResult *eval_results = calloc(pos->moves_len, sizeof(EvalResult));
         Pos next_pos;
         for (int i = 0; i < pos->moves_len; i++) {
             Move move = pos->p_moves[i];
             position_after_move(pos, &move, &next_pos);
-            eval_results[i] = position_val_at_ply(&next_pos, ply-1);
+            EvalResult eval_result = position_val_at_ply(&next_pos, ply-1);
+            int found_better = 0;
+            if (i == 0) {
+                found_better = 1;
+            } else {
+                int cmp_result = cmp_eval_results(&eval_result, &best_eval_result);
+                if (
+                    cmp_result < 0 && pos->active_color == COLOR_WHITE
+                        ||
+                    cmp_result > 0 && pos->active_color == COLOR_BLACK
+                ) {
+                    found_better = 1;
+                }
+            }
+            if (found_better) {
+                best_eval_result = eval_result;
+                best_move = move;
+            }
         }
-        qsort(eval_results, pos->moves_len, sizeof(EvalResult), cmp_eval_results);
-        if (pos->active_color == COLOR_WHITE) {
-            result = eval_results[0];
-        } else {
-            result = eval_results[pos->moves_len-1];
-        }
-        free(eval_results);
+        MoveListNode *new_move_list_node = move_list_node_buffer_current++;
+        new_move_list_node->rest = (ply == 1 ? NULL : best_eval_result.moves);
+        new_move_list_node->move = best_move;
+        best_eval_result.moves = new_move_list_node;
     }
-    return result;
+    return best_eval_result;
+}
+
+void print_move_list(MoveListNode *move_list_node) {
+    while (move_list_node != NULL) {
+        print_move(move_list_node->move);
+        move_list_node = move_list_node->rest;
+    }
 }
 
 int main() {
-    
-    move_buffer_start = calloc(MOVE_BUFFER_N_MOVES, sizeof(Move));
-    move_buffer_current = move_buffer_start;
-    move_buffer_end = move_buffer_start + MOVE_BUFFER_N_MOVES;
-
     char starting_fen[] =
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 123 55";
     char fen_mate_in_2[] =
@@ -820,20 +850,23 @@ int main() {
         "r1bbRk1r/ppp2ppp/8/1B6/5q2/2P5/PPP2PPP/R5K1 b - - 1 1";
     char empty_fen[] = "8/8/8/8/8/8/8/8 w - - 0 1";
     char fen[] = "8/4k3/3P1P2/4Q3/1B6/8/1K6/8 w - - 0 1";
+    char fen_simple_mate_in_2[] = "7k/8/6pp/8/8/8/8/K1QR4 w - - 0 1";
+    char fen_simple_mate_in_1[] = "7k/6pp/8/8/8/8/8/K2R4 w - - 0 1";
 
     Pos pos = decode_fen(fen_mate_in_2);
     explore_position(&pos);
-    EvalResult er = position_val_at_ply(&pos, 3);
+    int ply = 3;
+    EvalResult er = position_val_at_ply(&pos, ply);
     printf("sizeof(Pos): %lu\n", sizeof(Pos));
     printf("sizeof(Move): %lu\n", sizeof(Move));
     printf("\n");
     print_eval_result(&er);
+    print_move_list(er.moves);
 
     printf("Number of positions explored: %d\n", n_pos_explored);
     printf("Number of positions made: %d\n", positions_made);
 
-    free(move_buffer_start);
-
     printf("Done.\n");
     return 0;
+
 }
