@@ -679,11 +679,26 @@ int is_king_in_check(Pos *pos) {
     return -1;
 }
 
-void print_move(Move move) {
-    print_sq(move.from);
-    printf("->");
-    print_sq(move.to);
-    printf("\n");
+void move_to_alg(Move move, Pos *pos, char *result) {
+    Piece piece_moving = get_piece_at_sq(pos, move.from);
+    Piece wp = piece_as_white(piece_moving);
+    int i = 0;
+    if      (wp == P_WHITE) { }
+    else if (wp == R_WHITE) { result[i++] = 'R'; }
+    else if (wp == N_WHITE) { result[i++] = 'N'; }
+    else if (wp == B_WHITE) { result[i++] = 'B'; }
+    else if (wp == Q_WHITE) { result[i++] = 'Q'; }
+    else if (wp == K_WHITE) { result[i++] = 'K'; }
+    sq_to_algsq(move.to, result + i);
+    i += 2;
+        
+    result[i++] = '\0';
+}
+
+void print_move(Move move, Pos *pos) {
+    char buf[10];
+    move_to_alg(move, pos, buf);
+    printf("%s", buf);
 }
 
 void set_legal_moves_for_position(Pos *pos) {
@@ -698,12 +713,6 @@ void set_legal_moves_for_position(Pos *pos) {
             }
         }
     }
-    //printf("For position %p with %d to play, found %d moves\n",
-    //                        pos, pos->active_color, pos->moves.len);
-    //print_placement(pos);
-    //for (int i = 0; i < pos->moves.len; i++) {
-    //    print_move((pos->moves.data[i]));
-    //}
 
 }
 
@@ -834,11 +843,13 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
     return best_eval_result;
 }
 
-void print_move_list(MoveListNode *move_list_node) {
+void print_move_list(MoveListNode *move_list_node, Pos *pos) {
     while (move_list_node != NULL) {
-        print_move(move_list_node->move);
+        print_move(move_list_node->move, pos);
+        printf(" ");
         move_list_node = move_list_node->rest;
     }
+    printf("\n");
 }
 
 int main() {
@@ -861,10 +872,15 @@ int main() {
     printf("sizeof(Move): %lu\n", sizeof(Move));
     printf("\n");
     print_eval_result(&er);
-    print_move_list(er.moves);
+    print_move_list(er.moves, &pos);
 
     printf("Number of positions explored: %d\n", n_pos_explored);
     printf("Number of positions made: %d\n", positions_made);
+
+    char alg[10];
+    move_to_alg(er.moves->move, &pos, alg);
+    printf("%s", alg);
+    printf("\n");
 
     printf("Done.\n");
     return 0;
