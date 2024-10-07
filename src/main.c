@@ -57,7 +57,7 @@ typedef char Direction;
 typedef char File;
 typedef char Rank;
 typedef char Color;
-typedef int Ply;
+typedef float Ply;
 typedef double Val;
 
 typedef struct {
@@ -830,7 +830,7 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
         for (int i = 0; i < pos->moves_len; i++) {
             Move move = pos->p_moves[i];
             position_after_move(pos, &move, &next_pos);
-            EvalResult eval_result = position_val_at_ply(&next_pos, ply-1);
+            EvalResult eval_result = position_val_at_ply(&next_pos, ply-0.5);
             int found_better = 0;
             if (i == 0) {
                 found_better = 1;
@@ -850,7 +850,7 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
             }
         }
         MoveListNode *new_move_list_node = move_list_node_buffer_current++;
-        new_move_list_node->rest = (ply == 1 ? NULL : best_eval_result.moves);
+        new_move_list_node->rest = (ply == 0.5 ? NULL : best_eval_result.moves);
         new_move_list_node->move = best_move;
         best_eval_result.moves = new_move_list_node;
     }
@@ -899,7 +899,7 @@ int main() {
 
     Pos pos = decode_fen(fen_mate_in_2);
     explore_position(&pos);
-    int ply = 3;
+    float ply = 1.5;
     EvalResult er = position_val_at_ply(&pos, ply);
     printf("sizeof(Pos): %lu\n", sizeof(Pos));
     printf("sizeof(Move): %lu\n", sizeof(Move));
