@@ -91,6 +91,11 @@ Direction ALL_DIRECTIONS[16] = {
 
 typedef struct Pos Pos;
 
+void explore_position(Pos *pos);
+int is_king_in_check(Pos *pos);
+int is_king_in_checkmate(Pos *pos);
+int is_king_in_stalemate(Pos *pos);
+
 typedef struct Move {
     Sq from;
     Sq to;
@@ -142,8 +147,6 @@ struct Pos {
 void free_pos(Pos *pos) {
     free(pos);
 }
-
-int is_king_in_check(Pos *pos);
 
 int positions_made = 0;
 
@@ -680,6 +683,7 @@ int is_king_in_check(Pos *pos) {
 }
 
 void move_to_alg(Move move, Pos *pos, char *result) {
+    explore_position(pos);
     Piece piece_moving = get_piece_at_sq(pos, move.from);
     Piece wp = piece_as_white(piece_moving);
     int i = 0;
@@ -691,6 +695,16 @@ void move_to_alg(Move move, Pos *pos, char *result) {
     else if (wp == K_WHITE) { result[i++] = 'K'; }
     sq_to_algsq(move.to, result + i);
     i += 2;
+
+    Pos next_pos;
+    position_after_move(pos, &move, &next_pos);
+    explore_position(&next_pos);
+
+    if (is_king_in_checkmate(&next_pos)) {
+        result[i++] = '#';
+    } else if (is_king_in_check(&next_pos)) {
+        result[i++] = '+';
+    }
         
     result[i++] = '\0';
 }
@@ -843,10 +857,29 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
     return best_eval_result;
 }
 
-void print_move_list(MoveListNode *move_list_node, Pos *pos) {
+void print_move_list(MoveListNode *move_list_node, Pos *pos_in) {
+    Pos pos = *pos_in;
+    Pos new_pos;
+    int printed_first_move_number = 0;
+    int move_number = 1;
     while (move_list_node != NULL) {
-        print_move(move_list_node->move, pos);
+        if (pos.active_color == COLOR_WHITE) {
+            printf("%d.", move_number);
+            printed_first_move_number = 1;
+        }
+        if (pos.active_color == COLOR_BLACK) {
+            if (move_number == 1 && !printed_first_move_number) {
+                printf("1... ");
+            }
+            move_number++;
+        }
+        print_move(move_list_node->move, &pos);
         printf(" ");
+        if (pos.active_color == COLOR_BLACK) {
+            printf(" ");
+        }
+        position_after_move(&pos, &move_list_node->move, &new_pos);
+        pos = new_pos;
         move_list_node = move_list_node->rest;
     }
     printf("\n");
@@ -876,11 +909,6 @@ int main() {
 
     printf("Number of positions explored: %d\n", n_pos_explored);
     printf("Number of positions made: %d\n", positions_made);
-
-    char alg[10];
-    move_to_alg(er.moves->move, &pos, alg);
-    printf("%s", alg);
-    printf("\n");
 
     printf("Done.\n");
     return 0;
