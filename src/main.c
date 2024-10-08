@@ -91,15 +91,24 @@ Direction ALL_DIRECTIONS[16] = {
 
 typedef struct Pos Pos;
 
-void explore_position(Pos *pos);
-int is_king_in_check(Pos *pos);
-int is_king_in_checkmate(Pos *pos);
-int is_king_in_stalemate(Pos *pos);
-
 typedef struct Move {
     Sq from;
     Sq to;
 } Move;
+
+int sq_eq(Sq a, Sq b) {
+    return a.f == b.f && a.r == b.r;
+}
+
+int move_eq(Move a, Move b) {
+    return sq_eq(a.from, b.from) && sq_eq(a.to, b.to);
+}
+
+void explore_position(Pos *pos);
+int is_king_in_check(Pos *pos);
+int is_king_in_checkmate(Pos *pos);
+int is_king_in_stalemate(Pos *pos);
+void print_move(Move move, Pos *pos);
 
 typedef struct MoveListNode {
     Move move;
@@ -682,22 +691,86 @@ int is_king_in_check(Pos *pos) {
     return -1;
 }
 
-void move_to_alg(Move move, Pos *pos, char *result) {
+void move_to_alg(Move move_in, Pos *pos, char *result) {
     explore_position(pos);
-    Piece piece_moving = get_piece_at_sq(pos, move.from);
-    Piece wp = piece_as_white(piece_moving);
+    Piece piece_moving = get_piece_at_sq(pos, move_in.from);
+    Piece wp_in = piece_as_white(piece_moving);
     int i = 0;
-    if      (wp == P_WHITE) { }
-    else if (wp == R_WHITE) { result[i++] = 'R'; }
-    else if (wp == N_WHITE) { result[i++] = 'N'; }
-    else if (wp == B_WHITE) { result[i++] = 'B'; }
-    else if (wp == Q_WHITE) { result[i++] = 'Q'; }
-    else if (wp == K_WHITE) { result[i++] = 'K'; }
-    sq_to_algsq(move.to, result + i);
+    if      (wp_in == P_WHITE) { }
+    else if (wp_in == R_WHITE) { result[i++] = 'R'; }
+    else if (wp_in == N_WHITE) { result[i++] = 'N'; }
+    else if (wp_in == B_WHITE) { result[i++] = 'B'; }
+    else if (wp_in == Q_WHITE) { result[i++] = 'Q'; }
+    else if (wp_in == K_WHITE) { result[i++] = 'K'; }
+    // Find all moves that have the same square as destination.
+    int is_unique = 1;
+    for (int i = 0; i < pos->moves_len; i++) {
+        Move move = pos->p_moves[i];
+        if (move_eq(move, move_in)) { continue; }
+        if (sq_eq(move.to, move_in.to)) {
+            Piece wp = piece_as_white(get_piece_at_sq(pos, move.from));
+            if (wp == wp_in) {
+                is_unique = 0;
+                break;
+            }
+        }
+    }
+    if (!is_unique) {
+        is_unique = 1;
+        // Try adding the file and see if this uniquely identifies the moving
+        // piece.
+        for (int i = 0; i < pos->moves_len; i++) {
+            Move move = pos->p_moves[i];
+            if (move_eq(move, move_in)) { continue; }
+            if (sq_eq(move.to, move_in.to)) {
+                Piece wp = piece_as_white(get_piece_at_sq(pos, move.from));
+                if (wp == wp_in) {
+                    if (move.from.f == move_in.from.f) {
+                        printf("1\n");
+                        is_unique = 0;
+                        break;
+                    }
+                }
+            }
+        }
+        if (is_unique) {
+            result[i++] = f_to_algf(move_in.from.f);
+        }
+    }
+    if (!is_unique) {
+        is_unique = 1;
+        // Try adding the rank and see if this uniquely identifies the moving
+        // piece.
+        for (int i = 0; i < pos->moves_len; i++) {
+            Move move = pos->p_moves[i];
+            if (move_eq(move, move_in)) { continue; }
+            if (sq_eq(move.to, move_in.to)) {
+                Piece wp = piece_as_white(get_piece_at_sq(pos, move.from));
+                if (wp == wp_in) {
+                    if (move.from.r == move_in.from.r) {
+                        is_unique = 0;
+                        break;
+                    }
+                }
+            }
+        }
+        if (is_unique) {
+            result[i++] = r_to_algr(move_in.from.r);
+        }
+    }
+    if (!is_unique) {
+        // Add both the rank and the file.
+        result[i++] = f_to_algf(move_in.from.f);
+        result[i++] = r_to_algr(move_in.from.r);
+    }
+    if (get_piece_at_sq(pos, move_in.to) != PIECE_EMPTY) {
+        result[i++] = 'x';
+    }
+    sq_to_algsq(move_in.to, result + i);
     i += 2;
 
     Pos next_pos;
-    position_after_move(pos, &move, &next_pos);
+    position_after_move(pos, &move_in, &next_pos);
     explore_position(&next_pos);
 
     if (is_king_in_checkmate(&next_pos)) {
@@ -896,10 +969,11 @@ int main() {
     char fen[] = "8/4k3/3P1P2/4Q3/1B6/8/1K6/8 w - - 0 1";
     char fen_simple_mate_in_2[] = "7k/8/6pp/8/8/8/8/K1QR4 w - - 0 1";
     char fen_simple_mate_in_1[] = "7k/6pp/8/8/8/8/8/K2R4 w - - 0 1";
+    char two_rooks_can_take[] = "k7/8/8/8/1RbR4/8/8/K7 w - - 0 1";
 
-    Pos pos = decode_fen(fen_mate_in_2);
+    Pos pos = decode_fen(two_rooks_can_take);
     explore_position(&pos);
-    float ply = 1.5;
+    float ply = 0.5;
     EvalResult er = position_val_at_ply(&pos, ply);
     printf("sizeof(Pos): %lu\n", sizeof(Pos));
     printf("sizeof(Move): %lu\n", sizeof(Move));
