@@ -695,14 +695,19 @@ void move_to_alg(Move move_in, Pos *pos, char *result) {
     explore_position(pos);
     Piece piece_moving = get_piece_at_sq(pos, move_in.from);
     Piece wp_in = piece_as_white(piece_moving);
+    int is_capture = 0;
+    if (get_piece_at_sq(pos, move_in.to) != PIECE_EMPTY) {
+        is_capture = 1;
+    }
     int i = 0;
-    if      (wp_in == P_WHITE) { }
+    if      (wp_in == P_WHITE && is_capture) {
+        result[i++] = f_to_algf(move_in.from.f);
+    }
     else if (wp_in == R_WHITE) { result[i++] = 'R'; }
     else if (wp_in == N_WHITE) { result[i++] = 'N'; }
     else if (wp_in == B_WHITE) { result[i++] = 'B'; }
     else if (wp_in == Q_WHITE) { result[i++] = 'Q'; }
     else if (wp_in == K_WHITE) { result[i++] = 'K'; }
-    // Find all moves that have the same square as destination.
     int is_unique = 1;
     for (int i = 0; i < pos->moves_len; i++) {
         Move move = pos->p_moves[i];
@@ -763,7 +768,7 @@ void move_to_alg(Move move_in, Pos *pos, char *result) {
         result[i++] = f_to_algf(move_in.from.f);
         result[i++] = r_to_algr(move_in.from.r);
     }
-    if (get_piece_at_sq(pos, move_in.to) != PIECE_EMPTY) {
+    if (is_capture) {
         result[i++] = 'x';
     }
     sq_to_algsq(move_in.to, result + i);
@@ -962,7 +967,7 @@ int main() {
     char starting_fen[] =
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 123 55";
     char fen_mate_in_2[] =
-        "r1b2k1r/ppp1bppp/8/1B1Q4/5q2/2P5/PPP2PPP/R3R1K1 w - - 1 0";
+        "r2qkb1r/pp2nppp/3p4/2pNN1B1/2BnP3/3P4/PPP2PPP/R2bK2R w KQkq - 1 0";
     char mated[] =
         "r1bbRk1r/ppp2ppp/8/1B6/5q2/2P5/PPP2PPP/R5K1 b - - 1 1";
     char empty_fen[] = "8/8/8/8/8/8/8/8 w - - 0 1";
@@ -971,9 +976,9 @@ int main() {
     char fen_simple_mate_in_1[] = "7k/6pp/8/8/8/8/8/K2R4 w - - 0 1";
     char many_rooks_can_take[] = "k7/8/8/2R5/2b5/2R5/8/K7 w - - 0 1";
 
-    Pos pos = decode_fen(many_rooks_can_take);
+    Pos pos = decode_fen(fen_mate_in_2);
     explore_position(&pos);
-    float ply = 0.5;
+    float ply = 1.5;
     EvalResult er = position_val_at_ply(&pos, ply);
     printf("sizeof(Pos): %lu\n", sizeof(Pos));
     printf("sizeof(Move): %lu\n", sizeof(Move));
