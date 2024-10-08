@@ -969,9 +969,9 @@ int main() {
     char fen[] = "8/4k3/3P1P2/4Q3/1B6/8/1K6/8 w - - 0 1";
     char fen_simple_mate_in_2[] = "7k/8/6pp/8/8/8/8/K1QR4 w - - 0 1";
     char fen_simple_mate_in_1[] = "7k/6pp/8/8/8/8/8/K2R4 w - - 0 1";
-    char two_rooks_can_take[] = "k7/8/8/8/1RbR4/8/8/K7 w - - 0 1";
+    char many_rooks_can_take[] = "k7/8/8/2R5/2b5/2R5/8/K7 w - - 0 1";
 
-    Pos pos = decode_fen(two_rooks_can_take);
+    Pos pos = decode_fen(many_rooks_can_take);
     explore_position(&pos);
     float ply = 0.5;
     EvalResult er = position_val_at_ply(&pos, ply);
