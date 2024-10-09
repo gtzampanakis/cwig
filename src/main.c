@@ -541,7 +541,7 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
                 if (found == PIECE_EMPTY) {
                     if (move_to_empty_allowed) {
                         if (move_buffer_current >= move_buffer_end) {
-                            printf("Move buffer exhausted. Aborting...");
+                            fprintf(stderr, "Move buffer exhausted. Aborting...");
                             abort();
                         }
                         move_buffer_current->from = sq0;
@@ -561,7 +561,7 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
                 } else {
                     if (captures_allowed) {
                         if (move_buffer_current >= move_buffer_end) {
-                            printf("Move buffer exhausted. Aborting...");
+                            fprintf(stderr, "Move buffer exhausted. Aborting...");
                             abort();
                         }
                         move_buffer_current->from = sq0;
@@ -625,10 +625,12 @@ int is_king_in_square_in_check(Pos *pos, Sq sq0) {
                     (
                         found_as_white == B_WHITE ||
                         found_as_white == Q_WHITE ||
-                        found_as_white == K_WHITE && d <= 1 
+                        found_as_white == K_WHITE && d <= 1
                     )
                 ) {
                     return 1;
+                } else {
+                    break;
                 }
             }
         }
@@ -896,6 +898,8 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
     EvalResult best_eval_result;
     Move best_move;
     explore_position(pos);
+    //move_buffer_current = move_buffer_start;
+    //move_list_node_buffer_current = move_list_node_buffer_start;
     if (
         ply == 0
         || (pos->is_king_in_checkmate == 1)
@@ -967,7 +971,7 @@ int main() {
     char starting_fen[] =
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 123 55";
     char fen_mate_in_2[] =
-        "r2qkb1r/pp2nppp/3p4/2pNN1B1/2BnP3/3P4/PPP2PPP/R2bK2R w KQkq - 1 0";
+        "1r1kr3/Nbppn1pp/1b6/8/6Q1/3B1P2/Pq3P1P/3RR1K1 w - - 1 0";
     char mated[] =
         "r1bbRk1r/ppp2ppp/8/1B6/5q2/2P5/PPP2PPP/R5K1 b - - 1 1";
     char empty_fen[] = "8/8/8/8/8/8/8/8 w - - 0 1";
@@ -976,13 +980,36 @@ int main() {
     char fen_simple_mate_in_1[] = "7k/6pp/8/8/8/8/8/K2R4 w - - 0 1";
     char many_rooks_can_take[] = "k7/8/8/2R5/2b5/2R5/8/K7 w - - 0 1";
 
+    //FILE *f = fopen("mates_in_2.txt", "r");
+    //char c;
+    //int slashes_found = 0;
+    //char line[500];
+    //int line_index = 0;
+    //while ((c = fgetc(f)) != EOF) {
+    //    if (c == '\n') {
+    //        line[line_index++] = '\0';
+    //        line_index = 0;
+    //        if (slashes_found == 7) {
+    //            printf("%s\n", line);
+    //            Pos pos = decode_fen(line);
+    //            float ply = 1.5;
+    //            EvalResult er = position_val_at_ply(&pos, ply);
+    //            print_eval_result(&er);
+    //            print_move_list(er.moves, &pos);
+    //            printf("\n");
+    //        }
+    //        slashes_found = 0;
+    //    }
+    //    line[line_index++] = c;
+    //    if (c == '/') {
+    //        slashes_found++;
+    //    }
+    //}
+    //fclose(f);
+
     Pos pos = decode_fen(fen_mate_in_2);
-    explore_position(&pos);
     float ply = 1.5;
     EvalResult er = position_val_at_ply(&pos, ply);
-    printf("sizeof(Pos): %lu\n", sizeof(Pos));
-    printf("sizeof(Move): %lu\n", sizeof(Move));
-    printf("\n");
     print_eval_result(&er);
     print_move_list(er.moves, &pos);
 
