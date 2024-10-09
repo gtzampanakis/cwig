@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MOVE_BUFFER_N_MOVES ( 100 * 1000 * 50 )
+#define MOVE_BUFFER_N_MOVES ( 100 * 1000 * 50 * 10 )
 #define MOVE_LIST_NODE_BUFFER_N_MOVE_LIST_NODES (50 * 1000 * 50)
 
 #define PRINT_EVAL_AT_PLY_DIAGNOSTICS 0
@@ -543,7 +543,7 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
                 if (found == PIECE_EMPTY) {
                     if (move_to_empty_allowed) {
                         if (move_buffer_current >= move_buffer_end) {
-                            fprintf(stderr, "Move buffer exhausted. Aborting...");
+                            fprintf(stderr, "Move buffer exhausted. Aborting...\n");
                             abort();
                         }
                         move_buffer_current->from = sq0;
@@ -563,7 +563,7 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
                 } else {
                     if (captures_allowed) {
                         if (move_buffer_current >= move_buffer_end) {
-                            fprintf(stderr, "Move buffer exhausted. Aborting...");
+                            fprintf(stderr, "Move buffer exhausted. Aborting...\n");
                             abort();
                         }
                         move_buffer_current->from = sq0;
@@ -989,38 +989,38 @@ int main() {
     char fen_simple_mate_in_1[] = "7k/6pp/8/8/8/8/8/K2R4 w - - 0 1";
     char many_rooks_can_take[] = "k7/8/8/2R5/2b5/2R5/8/K7 w - - 0 1";
 
-    //FILE *f = fopen("mates_in_2.txt", "r");
-    //char c;
-    //int slashes_found = 0;
-    //char line[500];
-    //int line_index = 0;
-    //while ((c = fgetc(f)) != EOF) {
-    //    if (c == '\n') {
-    //        line[line_index++] = '\0';
-    //        line_index = 0;
-    //        if (slashes_found == 7) {
-    //            printf("%s\n", line);
-    //            Pos pos = decode_fen(line);
-    //            float ply = 1.5;
-    //            EvalResult er = position_val_at_ply(&pos, ply);
-    //            print_eval_result(&er);
-    //            print_move_list(er.moves, &pos);
-    //            printf("\n");
-    //        }
-    //        slashes_found = 0;
-    //    }
-    //    line[line_index++] = c;
-    //    if (c == '/') {
-    //        slashes_found++;
-    //    }
-    //}
-    //fclose(f);
+    FILE *f = fopen("mates_in_2.txt", "r");
+    char c;
+    int slashes_found = 0;
+    char line[500];
+    int line_index = 0;
+    while ((c = fgetc(f)) != EOF) {
+        if (c == '\n') {
+            line[line_index++] = '\0';
+            line_index = 0;
+            if (slashes_found == 7) {
+                printf("%s\n", line);
+                Pos pos = decode_fen(line);
+                float ply = 1.5;
+                EvalResult er = position_val_at_ply(&pos, ply);
+                print_eval_result(&er);
+                print_move_list(er.moves, &pos);
+                printf("\n");
+            }
+            slashes_found = 0;
+        }
+        line[line_index++] = c;
+        if (c == '/') {
+            slashes_found++;
+        }
+    }
+    fclose(f);
 
-    Pos pos = decode_fen(fen_mate_in_2);
-    float ply = 1.5;
-    EvalResult er = position_val_at_ply(&pos, ply);
-    print_eval_result(&er);
-    print_move_list(er.moves, &pos);
+    //Pos pos = decode_fen(fen_mate_in_2);
+    //float ply = 1.5;
+    //EvalResult er = position_val_at_ply(&pos, ply);
+    //print_eval_result(&er);
+    //print_move_list(er.moves, &pos);
 
     printf("Number of positions explored: %d\n", n_pos_explored);
     printf("Number of positions made: %d\n", positions_made);
