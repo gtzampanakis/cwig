@@ -104,12 +104,6 @@ int move_eq(Move a, Move b) {
     return sq_eq(a.from, b.from) && sq_eq(a.to, b.to);
 }
 
-void explore_position(Pos *pos);
-int is_king_in_check(Pos *pos);
-int is_king_in_checkmate(Pos *pos);
-int is_king_in_stalemate(Pos *pos);
-void print_move(Move move, Pos *pos);
-
 typedef struct MoveListNode {
     Move move;
     struct MoveListNode *rest;
@@ -130,6 +124,14 @@ typedef struct {
     int is_draw;
     MoveListNode *moves;
 } EvalResult;
+
+void explore_position(Pos *pos);
+int is_king_in_check(Pos *pos);
+int is_king_in_checkmate(Pos *pos);
+int is_king_in_stalemate(Pos *pos);
+void print_move(Move move, Pos *pos);
+
+EvalResult position_val_at_ply_internal(Pos *pos, Ply ply, int reset_buffers);
 
 int positions_allocated = 0;
 
@@ -895,11 +897,17 @@ int cmp_eval_results(const void *aa, const void *bb) {
 }
 
 EvalResult position_val_at_ply(Pos *pos, Ply ply) {
+    return position_val_at_ply_internal(pos, ply, 1);
+}
+
+EvalResult position_val_at_ply_internal(Pos *pos, Ply ply, int reset_buffers) {
     EvalResult best_eval_result;
     Move best_move;
     explore_position(pos);
-    //move_buffer_current = move_buffer_start;
-    //move_list_node_buffer_current = move_list_node_buffer_start;
+    if (reset_buffers) {
+        move_buffer_current = move_buffer_start;
+        move_list_node_buffer_current = move_list_node_buffer_start;
+    }
     if (
         ply == 0
         || (pos->is_king_in_checkmate == 1)
@@ -912,7 +920,8 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
         for (int i = 0; i < pos->moves_len; i++) {
             Move move = pos->p_moves[i];
             position_after_move(pos, &move, &next_pos);
-            EvalResult eval_result = position_val_at_ply(&next_pos, ply-0.5);
+            EvalResult eval_result = position_val_at_ply_internal(
+                                                    &next_pos, ply-0.5, 0);
             int found_better = 0;
             if (i == 0) {
                 found_better = 1;
