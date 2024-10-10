@@ -436,14 +436,10 @@ void position_after_move(Pos *pos, Move *move, Pos *new_pos) {
     }
     Piece piece_moving = get_piece_at_sq(pos, move->from);
     Piece piece_after_move;
-    //if (
-    //    piece_moving == P_WHITE && move->to.r == 7
-    //        ||
-    //    piece_moving == P_BLACK && move->to.r == 0
-    //) {
-    //    piece_after_move = move->promotion_to;
-    //} else
-    {
+         
+    if (move->promotion_to != PIECE_EMPTY) {
+        piece_after_move = move->promotion_to;
+    } else {
         piece_after_move = piece_moving;
     }
     set_piece_at_sq(new_pos, move->to, piece_after_move);
@@ -554,30 +550,40 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
                 if (sq.f < 0 || sq.f > 7 || sq.r < 0 || sq.r> 7) { break; }
                 Piece found = get_piece_at_sq(pos, sq);
                 Color found_color = piece_color(found);
-                Piece *promotion_options_for_this_move;
+                Piece *po;
                 if (
                     piece == P_WHITE && sq.r == 7
                         ||
                     piece == P_BLACK && sq.r == 0) {
-                    promotion_options_for_this_move = promotion_options;
+                    po = promotion_options;
                 } else {
-                    promotion_options_for_this_move = NULL;
+                    po = NULL;
                 }
                 if (found == PIECE_EMPTY) {
                     if (move_to_empty_allowed) {
-                        Move move = { .from = sq0, .to = sq };
+                        Move move = {
+                            .from = sq0, .to = sq, .promotion_to = PIECE_EMPTY };
                         position_after_move(pos, &move, &next_pos);
                         next_pos.active_color =
                             toggled_color(next_pos.active_color);
                         if (is_king_in_check(&next_pos) != 1) {
-                            if (move_buffer_current >= move_buffer_end) {
-                                fprintf(stderr,
-                                    "Move buffer exhausted. Aborting...\n");
-                                abort();
+                            for (int j = 0; j < (po == NULL? 1: 4); j++) {
+                                if (move_buffer_current >= move_buffer_end) {
+                                    fprintf(stderr,
+                                        "Move buffer exhausted. Aborting...\n");
+                                    abort();
+                                }
+                                *move_buffer_current = move;
+                                if (po != NULL) {
+                                    move_buffer_current->promotion_to = 
+                                                        own_color | po[j];
+                                } else {
+                                    move_buffer_current->promotion_to =
+                                                                PIECE_EMPTY;
+                                }
+                                pos->moves_len++;
+                                move_buffer_current++;
                             }
-                            *move_buffer_current = move;
-                            pos->moves_len++;
-                            move_buffer_current++;
                         }
                     } else {
                         break;
@@ -586,19 +592,29 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
                     break;
                 } else {
                     if (captures_allowed) {
-                        Move move = { .from = sq0, .to = sq };
+                        Move move = {
+                            .from = sq0, .to = sq, .promotion_to = PIECE_EMPTY };
                         position_after_move(pos, &move, &next_pos);
                         next_pos.active_color =
                             toggled_color(next_pos.active_color);
                         if (is_king_in_check(&next_pos) != 1) {
-                            if (move_buffer_current >= move_buffer_end) {
-                                fprintf(stderr,
-                                        "Move buffer exhausted. Aborting...\n");
-                                abort();
+                            for (int j = 0; j < (po == NULL? 1: 4); j++) {
+                                if (move_buffer_current >= move_buffer_end) {
+                                    fprintf(stderr,
+                                            "Move buffer exhausted. Aborting...\n");
+                                    abort();
+                                }
+                                *move_buffer_current = move;
+                                if (po != NULL) {
+                                    move_buffer_current->promotion_to = 
+                                                        own_color | po[j];
+                                } else {
+                                    move_buffer_current->promotion_to =
+                                                                PIECE_EMPTY;
+                                }
+                                pos->moves_len++;
+                                move_buffer_current++;
                             }
-                            *move_buffer_current = move;
-                            pos->moves_len++;
-                            move_buffer_current++;
                         }
                     }
                     break;
@@ -802,6 +818,29 @@ void move_to_alg(Move move_in, Pos *pos, char *result) {
     }
     sq_to_algsq(move_in.to, result + i);
     i += 2;
+
+    switch (piece_as_white(move_in.promotion_to)) {
+        case R_WHITE:
+        case R_BLACK:
+            result[i++] = '=';
+            result[i++] = 'R';
+            break;
+        case N_WHITE:
+        case N_BLACK:
+            result[i++] = '=';
+            result[i++] = 'N';
+            break;
+        case B_WHITE:
+        case B_BLACK:
+            result[i++] = '=';
+            result[i++] = 'B';
+            break;
+        case Q_WHITE:
+        case Q_BLACK:
+            result[i++] = '=';
+            result[i++] = 'Q';
+            break;
+    }
 
     Pos next_pos;
     position_after_move(pos, &move_in, &next_pos);
@@ -1042,6 +1081,12 @@ int main() {
 
     //Pos pos = decode_fen(
     //    "1rb4r/pkPp3p/1b1P3n/1Q6/N3Pp2/8/P1P3PP/7K w - - 1 0");
+    ////explore_position(&pos);
+    ////for (int i = 0; i < pos.moves_len; i++) {
+    ////    Move move = pos.p_moves[i];
+    ////    print_move(move, &pos);
+    ////    printf("\n");
+    ////}
     //float ply = 1.5;
     //EvalResult er = position_val_at_ply(&pos, ply);
     //print_eval_result(&er);
