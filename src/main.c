@@ -94,6 +94,7 @@ typedef struct Pos Pos;
 typedef struct Move {
     Sq from;
     Sq to;
+    Piece promotion_to;
 } Move;
 
 int sq_eq(Sq a, Sq b) {
@@ -131,8 +132,6 @@ int is_king_in_checkmate(Pos *pos);
 int is_king_in_stalemate(Pos *pos);
 void print_move(Move move, Pos *pos);
 
-EvalResult position_val_at_ply_internal(Pos *pos, Ply ply, int reset_buffers);
-
 int positions_allocated = 0;
 
 Sq make_sq(File f, Rank r) {
@@ -154,10 +153,6 @@ struct Pos {
     Move *p_moves;
     int moves_len;
 };
-
-void free_pos(Pos *pos) {
-    free(pos);
-}
 
 int positions_made = 0;
 
@@ -432,7 +427,19 @@ void position_after_move(Pos *pos, Move *move, Pos *new_pos) {
             set_piece_at_sq(new_pos, sq, get_piece_at_sq(pos, sq));
         }
     }
-    set_piece_at_sq(new_pos, move->to, get_piece_at_sq(pos, move->from));
+    Piece piece_moving = get_piece_at_sq(pos, move->from);
+    Piece piece_after_move;
+    //if (
+    //    piece_moving == P_WHITE && move->to.r == 7
+    //        ||
+    //    piece_moving == P_BLACK && move->to.r == 0
+    //) {
+    //    piece_after_move = move->promotion_to;
+    //} else
+    {
+        piece_after_move = piece_moving;
+    }
+    set_piece_at_sq(new_pos, move->to, piece_after_move);
     set_piece_at_sq(new_pos, move->from, PIECE_EMPTY);
     new_pos->active_color = toggled_color(pos->active_color);
 }
@@ -896,17 +903,14 @@ int cmp_eval_results(const void *aa, const void *bb) {
     return r;
 }
 
-EvalResult position_val_at_ply(Pos *pos, Ply ply) {
-    return position_val_at_ply_internal(pos, ply, 1);
+void reset_buffers() {
+    move_buffer_current = move_buffer_start;
+    move_list_node_buffer_current = move_list_node_buffer_start;
 }
 
-EvalResult position_val_at_ply_internal(Pos *pos, Ply ply, int reset_buffers) {
+EvalResult position_val_at_ply(Pos *pos, Ply ply) {
     EvalResult best_eval_result;
     Move best_move;
-    if (reset_buffers) {
-        move_buffer_current = move_buffer_start;
-        move_list_node_buffer_current = move_list_node_buffer_start;
-    }
     explore_position(pos);
     if (
         ply == 0
@@ -920,8 +924,8 @@ EvalResult position_val_at_ply_internal(Pos *pos, Ply ply, int reset_buffers) {
         for (int i = 0; i < pos->moves_len; i++) {
             Move move = pos->p_moves[i];
             position_after_move(pos, &move, &next_pos);
-            EvalResult eval_result = position_val_at_ply_internal(
-                                                    &next_pos, ply-0.5, 0);
+            EvalResult eval_result = position_val_at_ply(
+                                                    &next_pos, ply-0.5);
             int found_better = 0;
             if (i == 0) {
                 found_better = 1;
@@ -989,40 +993,41 @@ int main() {
     char fen_simple_mate_in_1[] = "7k/6pp/8/8/8/8/8/K2R4 w - - 0 1";
     char many_rooks_can_take[] = "k7/8/8/2R5/2b5/2R5/8/K7 w - - 0 1";
 
-    FILE *f = fopen("mates_in_2.txt", "r");
-    char c;
-    int slashes_found = 0;
-    char line[500];
-    int line_index = 0;
-    while ((c = fgetc(f)) != EOF) {
-        if (c == '\n') {
-            line[line_index++] = '\0';
-            line_index = 0;
-            if (slashes_found == 7) {
-                printf("%s\n", line);
-                Pos pos = decode_fen(line);
-                float ply = 1.5;
-                EvalResult er = position_val_at_ply(&pos, ply);
-                //print_eval_result(&er);
-                print_move_list(er.moves, &pos);
-                printf("\n");
-                printf("\n");
-            }
-            slashes_found = 0;
-        }
-        line[line_index++] = c;
-        if (c == '/') {
-            slashes_found++;
-        }
-    }
-    fclose(f);
+    //FILE *f = fopen("mates_in_2.txt", "r");
+    //char c;
+    //int slashes_found = 0;
+    //char line[500];
+    //int line_index = 0;
+    //while ((c = fgetc(f)) != EOF) {
+    //    if (c == '\n') {
+    //        line[line_index++] = '\0';
+    //        line_index = 0;
+    //        if (slashes_found == 7) {
+    //            printf("%s\n", line);
+    //            reset_buffers();
+    //            Pos pos = decode_fen(line);
+    //            float ply = 1.5;
+    //            EvalResult er = position_val_at_ply(&pos, ply);
+    //            //print_eval_result(&er);
+    //            print_move_list(er.moves, &pos);
+    //            printf("\n");
+    //            printf("\n");
+    //        }
+    //        slashes_found = 0;
+    //    }
+    //    line[line_index++] = c;
+    //    if (c == '/') {
+    //        slashes_found++;
+    //    }
+    //}
+    //fclose(f);
 
-    //Pos pos = decode_fen(
-    //    "r2qkb1r/pp2nppp/3p4/2pNN1B1/2BnP3/3P4/PPP2PPP/R2bK2R w KQkq - 1 0");
-    //float ply = 1.5;
-    //EvalResult er = position_val_at_ply(&pos, ply);
-    //print_eval_result(&er);
-    //print_move_list(er.moves, &pos);
+    Pos pos = decode_fen(
+        "1rb4r/pkPp3p/1b1P3n/1Q6/N3Pp2/8/P1P3PP/7K w - - 1 0");
+    float ply = 1.5;
+    EvalResult er = position_val_at_ply(&pos, ply);
+    print_eval_result(&er);
+    print_move_list(er.moves, &pos);
 
     printf("Number of positions explored: %d\n", n_pos_explored);
     printf("Number of positions made: %d\n", positions_made);
