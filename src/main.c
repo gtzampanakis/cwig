@@ -903,11 +903,11 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
 EvalResult position_val_at_ply_internal(Pos *pos, Ply ply, int reset_buffers) {
     EvalResult best_eval_result;
     Move best_move;
-    explore_position(pos);
     if (reset_buffers) {
         move_buffer_current = move_buffer_start;
         move_list_node_buffer_current = move_list_node_buffer_start;
     }
+    explore_position(pos);
     if (
         ply == 0
         || (pos->is_king_in_checkmate == 1)
@@ -1003,8 +1003,9 @@ int main() {
                 Pos pos = decode_fen(line);
                 float ply = 1.5;
                 EvalResult er = position_val_at_ply(&pos, ply);
-                print_eval_result(&er);
+                //print_eval_result(&er);
                 print_move_list(er.moves, &pos);
+                printf("\n");
                 printf("\n");
             }
             slashes_found = 0;
@@ -1016,7 +1017,8 @@ int main() {
     }
     fclose(f);
 
-    //Pos pos = decode_fen(fen_mate_in_2);
+    //Pos pos = decode_fen(
+    //    "r2qkb1r/pp2nppp/3p4/2pNN1B1/2BnP3/3P4/PPP2PPP/R2bK2R w KQkq - 1 0");
     //float ply = 1.5;
     //EvalResult er = position_val_at_ply(&pos, ply);
     //print_eval_result(&er);
