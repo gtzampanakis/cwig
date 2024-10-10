@@ -89,6 +89,13 @@ Direction ALL_DIRECTIONS[16] = {
     DIR_NDL, DIR_NLD, DIR_NLU, DIR_NUL,
 };
 
+Piece promotion_options[4] = {
+    UNCOLORED_ROOK,
+    UNCOLORED_KNIGHT,
+    UNCOLORED_BISHOP,
+    UNCOLORED_QUEEN,
+};
+
 typedef struct Pos Pos;
 
 typedef struct Move {
@@ -547,18 +554,28 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
                 if (sq.f < 0 || sq.f > 7 || sq.r < 0 || sq.r> 7) { break; }
                 Piece found = get_piece_at_sq(pos, sq);
                 Color found_color = piece_color(found);
+                Piece *promotion_options_for_this_move;
+                if (
+                    piece == P_WHITE && sq.r == 7
+                        ||
+                    piece == P_BLACK && sq.r == 0) {
+                    promotion_options_for_this_move = promotion_options;
+                } else {
+                    promotion_options_for_this_move = NULL;
+                }
                 if (found == PIECE_EMPTY) {
                     if (move_to_empty_allowed) {
-                        if (move_buffer_current >= move_buffer_end) {
-                            fprintf(stderr, "Move buffer exhausted. Aborting...\n");
-                            abort();
-                        }
-                        move_buffer_current->from = sq0;
-                        move_buffer_current->to = sq;
-                        position_after_move(pos, move_buffer_current, &next_pos);
+                        Move move = { .from = sq0, .to = sq };
+                        position_after_move(pos, &move, &next_pos);
                         next_pos.active_color =
                             toggled_color(next_pos.active_color);
                         if (is_king_in_check(&next_pos) != 1) {
+                            if (move_buffer_current >= move_buffer_end) {
+                                fprintf(stderr,
+                                    "Move buffer exhausted. Aborting...\n");
+                                abort();
+                            }
+                            *move_buffer_current = move;
                             pos->moves_len++;
                             move_buffer_current++;
                         }
@@ -569,16 +586,17 @@ void append_legal_moves_for_piece(Pos* pos, Sq sq0, Piece piece) {
                     break;
                 } else {
                     if (captures_allowed) {
-                        if (move_buffer_current >= move_buffer_end) {
-                            fprintf(stderr, "Move buffer exhausted. Aborting...\n");
-                            abort();
-                        }
-                        move_buffer_current->from = sq0;
-                        move_buffer_current->to = sq;
-                        position_after_move(pos, move_buffer_current, &next_pos);
+                        Move move = { .from = sq0, .to = sq };
+                        position_after_move(pos, &move, &next_pos);
                         next_pos.active_color =
                             toggled_color(next_pos.active_color);
                         if (is_king_in_check(&next_pos) != 1) {
+                            if (move_buffer_current >= move_buffer_end) {
+                                fprintf(stderr,
+                                        "Move buffer exhausted. Aborting...\n");
+                                abort();
+                            }
+                            *move_buffer_current = move;
                             pos->moves_len++;
                             move_buffer_current++;
                         }
@@ -993,41 +1011,41 @@ int main() {
     char fen_simple_mate_in_1[] = "7k/6pp/8/8/8/8/8/K2R4 w - - 0 1";
     char many_rooks_can_take[] = "k7/8/8/2R5/2b5/2R5/8/K7 w - - 0 1";
 
-    //FILE *f = fopen("mates_in_2.txt", "r");
-    //char c;
-    //int slashes_found = 0;
-    //char line[500];
-    //int line_index = 0;
-    //while ((c = fgetc(f)) != EOF) {
-    //    if (c == '\n') {
-    //        line[line_index++] = '\0';
-    //        line_index = 0;
-    //        if (slashes_found == 7) {
-    //            printf("%s\n", line);
-    //            reset_buffers();
-    //            Pos pos = decode_fen(line);
-    //            float ply = 1.5;
-    //            EvalResult er = position_val_at_ply(&pos, ply);
-    //            //print_eval_result(&er);
-    //            print_move_list(er.moves, &pos);
-    //            printf("\n");
-    //            printf("\n");
-    //        }
-    //        slashes_found = 0;
-    //    }
-    //    line[line_index++] = c;
-    //    if (c == '/') {
-    //        slashes_found++;
-    //    }
-    //}
-    //fclose(f);
+    FILE *f = fopen("mates_in_2.txt", "r");
+    char c;
+    int slashes_found = 0;
+    char line[500];
+    int line_index = 0;
+    while ((c = fgetc(f)) != EOF) {
+        if (c == '\n') {
+            line[line_index++] = '\0';
+            line_index = 0;
+            if (slashes_found == 7) {
+                printf("%s\n", line);
+                reset_buffers();
+                Pos pos = decode_fen(line);
+                float ply = 1.5;
+                EvalResult er = position_val_at_ply(&pos, ply);
+                //print_eval_result(&er);
+                print_move_list(er.moves, &pos);
+                printf("\n");
+                printf("\n");
+            }
+            slashes_found = 0;
+        }
+        line[line_index++] = c;
+        if (c == '/') {
+            slashes_found++;
+        }
+    }
+    fclose(f);
 
-    Pos pos = decode_fen(
-        "1rb4r/pkPp3p/1b1P3n/1Q6/N3Pp2/8/P1P3PP/7K w - - 1 0");
-    float ply = 1.5;
-    EvalResult er = position_val_at_ply(&pos, ply);
-    print_eval_result(&er);
-    print_move_list(er.moves, &pos);
+    //Pos pos = decode_fen(
+    //    "1rb4r/pkPp3p/1b1P3n/1Q6/N3Pp2/8/P1P3PP/7K w - - 1 0");
+    //float ply = 1.5;
+    //EvalResult er = position_val_at_ply(&pos, ply);
+    //print_eval_result(&er);
+    //print_move_list(er.moves, &pos);
 
     printf("Number of positions explored: %d\n", n_pos_explored);
     printf("Number of positions made: %d\n", positions_made);
