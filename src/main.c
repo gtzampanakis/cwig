@@ -4,7 +4,8 @@
 #include <string.h>
 
 #define MOVE_BUFFER_N_MOVES ( 100 * 1000 * 50 * 10 )
-#define MOVE_LIST_NODE_BUFFER_N_MOVE_LIST_NODES (50 * 1000 * 50)
+#define MOVE_LIST_NODE_BUFFER_N_MOVE_LIST_NODES ( 50 * 1000 * 50 )
+#define EVAL_RESULT_ARRAY_BUFFER_N ( 50 * 1000 * 50 )
 
 #define PRINT_EVAL_AT_PLY_DIAGNOSTICS 0
 
@@ -132,6 +133,11 @@ typedef struct {
     int is_draw;
     MoveListNode *moves;
 } EvalResult;
+
+EvalResult eval_result_array_buffer_start[EVAL_RESULT_ARRAY_BUFFER_N];
+EvalResult *eval_result_array_buffer_end =
+    eval_result_array_buffer_start + EVAL_RESULT_ARRAY_BUFFER_N;
+EvalResult *eval_result_array_buffer_current = eval_result_array_buffer_start;
 
 void explore_position(Pos *pos);
 int is_king_in_check(Pos *pos);
@@ -960,14 +966,18 @@ int cmp_eval_results(const void *aa, const void *bb) {
     return r;
 }
 
+int cmp_eval_results_rev(const void *aa, const void *bb) {
+    return cmp_eval_results(bb, aa);
+}
+
 void reset_buffers() {
     move_buffer_current = move_buffer_start;
     move_list_node_buffer_current = move_list_node_buffer_start;
+    eval_result_array_buffer_current = eval_result_array_buffer_start;
 }
 
-EvalResult position_val_at_ply(Pos *pos, Ply ply) {
-    EvalResult best_eval_result;
-    Move best_move;
+EvalResult *position_val_at_ply(Pos *pos, Ply ply) {
+    EvalResult *ret_val;
     explore_position(pos);
     if (
         ply == 0
@@ -975,38 +985,45 @@ EvalResult position_val_at_ply(Pos *pos, Ply ply) {
         || (pos->is_king_in_stalemate == 1)
        )
     {
-        best_eval_result = position_static_val(pos);
+        if (eval_result_array_buffer_current >= eval_result_array_buffer_end) {
+            fprintf(stderr,
+                "eval_result_array_buffer exhausted. Aborting...\n");
+            abort();
+        }
+        ret_val = eval_result_array_buffer_current;
+        ret_val[0] = position_static_val(pos);
+        eval_result_array_buffer_current++;
     } else {
         Pos next_pos;
+        if (eval_result_array_buffer_current + pos->moves_len
+                                    > eval_result_array_buffer_end) {
+            fprintf(stderr,
+                "eval_result_array_buffer exhausted. Aborting...\n");
+            abort();
+        }
+        ret_val = eval_result_array_buffer_current;
+        eval_result_array_buffer_current += pos->moves_len;
         for (int i = 0; i < pos->moves_len; i++) {
             Move move = pos->p_moves[i];
             position_after_move(pos, &move, &next_pos);
-            EvalResult eval_result = position_val_at_ply(
+            EvalResult *eval_results = position_val_at_ply(
                                                     &next_pos, ply-0.5);
-            int found_better = 0;
-            if (i == 0) {
-                found_better = 1;
-            } else {
-                int cmp_result = cmp_eval_results(&eval_result, &best_eval_result);
-                if (
-                    cmp_result < 0 && pos->active_color == COLOR_WHITE
-                        ||
-                    cmp_result > 0 && pos->active_color == COLOR_BLACK
-                ) {
-                    found_better = 1;
-                }
-            }
-            if (found_better) {
-                best_eval_result = eval_result;
-                best_move = move;
-            }
+            EvalResult eval_result = eval_results[0];
+            MoveListNode *new_move_list_node = move_list_node_buffer_current++;
+            new_move_list_node->rest = (ply == 0.5 ? NULL : eval_result.moves);
+            new_move_list_node->move = move;
+            eval_result.moves = new_move_list_node;
+            ret_val[i] = eval_result;
         }
-        MoveListNode *new_move_list_node = move_list_node_buffer_current++;
-        new_move_list_node->rest = (ply == 0.5 ? NULL : best_eval_result.moves);
-        new_move_list_node->move = best_move;
-        best_eval_result.moves = new_move_list_node;
+        int (*cmp_fn)(const void *, const void *);
+        if (pos->active_color == COLOR_WHITE) {
+            cmp_fn = cmp_eval_results;
+        } else if (pos->active_color == COLOR_BLACK) {
+            cmp_fn = cmp_eval_results_rev;
+        }
+        qsort(ret_val, pos->moves_len, sizeof(EvalResult), cmp_fn);
     }
-    return best_eval_result;
+    return ret_val;
 }
 
 void print_move_list(MoveListNode *move_list_node, Pos *pos_in) {
@@ -1064,8 +1081,9 @@ int main() {
     //            reset_buffers();
     //            Pos pos = decode_fen(line);
     //            float ply = 1.5;
-    //            EvalResult er = position_val_at_ply(&pos, ply);
+    //            EvalResult *ers = position_val_at_ply(&pos, ply);
     //            //print_eval_result(&er);
+    //            EvalResult er = ers[0];
     //            print_move_list(er.moves, &pos);
     //            printf("\n");
     //            printf("\n");
@@ -1088,7 +1106,8 @@ int main() {
     //    printf("\n");
     //}
     float ply = 1.5;
-    EvalResult er = position_val_at_ply(&pos, ply);
+    EvalResult *ers = position_val_at_ply(&pos, ply);
+    EvalResult er = ers[0];
     print_eval_result(&er);
     print_move_list(er.moves, &pos);
 
