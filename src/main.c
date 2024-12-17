@@ -3,9 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MOVE_BUFFER_N_MOVES ( 100 * 1000 * 50 * 10 )
+#define MOVE_BUFFER_N_MOVES ( 100 * 1000 * 50 * 30 )
 #define MOVE_LIST_NODE_BUFFER_N_MOVE_LIST_NODES ( 50 * 1000 * 50 )
-#define EVAL_RESULT_ARRAY_BUFFER_N ( 50 * 1000 * 50 )
+#define EVAL_RESULT_ARRAY_BUFFER_N ( 50 * 1000 * 50 * 10 )
 
 #define PRINT_EVAL_AT_PLY_DIAGNOSTICS 0
 
@@ -136,7 +136,7 @@ EvalResult *eval_result_array_buffer_current = eval_result_array_buffer_start;
 enum PruneStrategyType {
     PruneStrategyTypeNoPruning,
     PruneStrategyTypePruneLowValChanges,
-    PruneStrategyTypeBasic,
+    PruneStrategyTypePruneLowVals,
 };
 
 typedef struct PruneStrategy {
@@ -151,7 +151,7 @@ int is_king_in_checkmate(Pos *pos);
 int is_king_in_stalemate(Pos *pos);
 void print_move(Move move, Pos *pos);
 EvalResult *position_val_at_ply(
-    Pos *pos, Ply ply, PruneStrategy *prune_strategy, int do_quiescence_search);
+    Pos *pos, Ply ply, PruneStrategy *prune_strat, int do_quiescence_search);
 
 int positions_allocated = 0;
 
@@ -175,8 +175,16 @@ struct Pos {
     int moves_len;
 };
 
-PruneStrategy prune_strategy_no_pruning ={
+PruneStrategy prune_strat_no_pruning ={
     .type = PruneStrategyTypeNoPruning
+};
+PruneStrategy prune_strat_prune_low_val_changes = {
+    .type = PruneStrategyTypePruneLowValChanges,
+    .cutoff = 1.0,
+};
+PruneStrategy prune_strat_prune_low_vals = {
+    .type = PruneStrategyTypePruneLowVals,
+    .cutoff = 1.0,
 };
 
 int positions_made = 0;
@@ -978,10 +986,10 @@ void reset_buffers() {
 }
 
 EvalResult *recurse_position_val_at_ply(
-    Pos *next_pos, Ply ply, PruneStrategy *prune_strategy, int do_quiescence_search, Move move
+    Pos *next_pos, Ply ply, PruneStrategy *prune_strat, int do_quiescence_search, Move move
 ) {
     EvalResult *eval_results = position_val_at_ply(
-            next_pos, ply-0.5, prune_strategy, do_quiescence_search);
+            next_pos, ply-0.5, prune_strat, do_quiescence_search);
     EvalResult *eval_result = &eval_results[0];
     MoveListNode *new_move_list_node = move_list_node_buffer_current++;
     new_move_list_node->rest = (ply == 0.5 ? NULL : eval_result->moves);
@@ -991,7 +999,7 @@ EvalResult *recurse_position_val_at_ply(
 }
 
 EvalResult *position_val_at_ply(
-    Pos *pos, Ply ply, PruneStrategy *prune_strategy,
+    Pos *pos, Ply ply, PruneStrategy *prune_strat,
     int do_quiescence_search
 ) {
     EvalResult *ret_val;
@@ -1009,12 +1017,8 @@ EvalResult *position_val_at_ply(
         }
         ret_val = eval_result_array_buffer_current;
         if (do_quiescence_search) {
-            PruneStrategy prune_strat_quiesc = {
-                .type = PruneStrategyTypePruneLowValChanges,
-                .cutoff = 1.0,
-            };
             EvalResult *eval_results =
-                position_val_at_ply(pos, 10, &prune_strat_quiesc, 0);
+                position_val_at_ply(pos, 10, &prune_strat_prune_low_val_changes, 0);
         } else {
             ret_val[0] = position_static_val(pos);
         }
@@ -1034,11 +1038,11 @@ EvalResult *position_val_at_ply(
         for (int i = 0; i < pos->moves_len; i++) {
             Move move = pos->p_moves[i];
             position_after_move(pos, &move, &next_pos);
-            if (prune_strategy->type == PruneStrategyTypeNoPruning) {
+            if (prune_strat->type == PruneStrategyTypeNoPruning) {
                 EvalResult *eval_result = recurse_position_val_at_ply(
-                    &next_pos, ply, prune_strategy, do_quiescence_search, move);
+                    &next_pos, ply, prune_strat, do_quiescence_search, move);
                 ret_val[i] = *eval_result;
-            } else if (prune_strategy->type == PruneStrategyTypePruneLowValChanges) {
+            } else if (prune_strat->type == PruneStrategyTypePruneLowValChanges) {
                 if (!was_pos_static_eval_result_set) {
                     pos_static_eval_result = position_static_val(pos);
                     was_pos_static_eval_result_set = 1;
@@ -1046,14 +1050,14 @@ EvalResult *position_val_at_ply(
                 EvalResult next_pos_eval_result = position_static_val(&next_pos);
                 Val next_pos_static_val = next_pos_eval_result.val;
                 Val diff = next_pos_static_val - pos_static_eval_result.val;
-                if (diff >= prune_strategy->cutoff
-                    || diff <= -prune_strategy->cutoff) {
-                    /* Don't prune. */
+                if (diff >= prune_strat->cutoff
+                    || diff <= -prune_strat->cutoff) {
+                    /* Don't prune; keep evaluating. */
                     EvalResult *eval_result = recurse_position_val_at_ply(
-                        &next_pos, ply, prune_strategy, do_quiescence_search, move);
+                        &next_pos, ply, prune_strat, do_quiescence_search, move);
                     ret_val[i] = *eval_result;
                 } else {
-                    /* Prune. */
+                    /* Prune. Stop evaluating. */
                     ret_val[i] = pos_static_eval_result;
                 }
             }
@@ -1126,7 +1130,7 @@ int main() {
     //            reset_buffers();
     //            Pos pos = decode_fen(line);
     //            float ply = 1.5;
-    //            EvalResult *ers = position_val_at_ply(&pos, ply, &prune_strategy_no_pruning, 0);
+    //            EvalResult *ers = position_val_at_ply(&pos, ply, &prune_strat_no_pruning, 0);
     //            //print_eval_result(&er);
     //            EvalResult er = ers[0];
     //            print_move_list(er.moves, &pos);
@@ -1142,7 +1146,7 @@ int main() {
     //}
     //fclose(f);
 
-    Pos pos = decode_fen(fen_lots_of_captures);
+    Pos pos = decode_fen(fen_entice_queen);
     //explore_position(&pos);
     //for (int i = 0; i < pos.moves_len; i++) {
     //    Move move = pos.p_moves[i];
@@ -1150,7 +1154,7 @@ int main() {
     //    printf("\n");
     //}
     float ply = 0.5;
-    EvalResult *ers = position_val_at_ply(&pos, ply, &prune_strategy_no_pruning, 1);
+    EvalResult *ers = position_val_at_ply(&pos, ply, &prune_strat_no_pruning, 1);
     EvalResult er = ers[0];
     print_eval_result(&er);
     print_move_list(er.moves, &pos);
