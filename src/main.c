@@ -393,7 +393,7 @@ Pos decode_fen(char *fen_string) {
             p.fullmoves += (c - 48);
         }
     }
-
+    explore_position(&p);
     return p;
 }
 
@@ -1088,20 +1088,28 @@ EvalResult *position_val_at_ply(
     return ret_val;
 }
 
-EvalResult *position_val_iter_deep(
+void position_val_iter_deep(
     Pos *pos,
+    EvalResult *buffer,
     Ply *plies,
     int plies_n,
     Val cutoff_val_diff
 ) {
-    EvalResult *ers = NULL;
     int *moves_mask = calloc(pos->moves_len, sizeof(int));
+    if (moves_mask == NULL) {
+        fprintf(stderr, "Could not allocate memory. Aborting...\n");
+        abort();
+    }
     for (int i = 0; i < plies_n; i++) {
         Ply ply = plies[i];
-        ers = position_val_at_ply(
+        reset_buffers();
+        EvalResult *ers = position_val_at_ply(
             pos, ply, &prune_strat_no_pruning, 1, moves_mask);
         Val cutoff_val = ers[0].val - cutoff_val_diff;
         for (int j = 0; j < pos->moves_len; j++) {
+            if (moves_mask[j] == 0) {
+                buffer[j] = ers[j];
+            }
             if (
                 pos->active_color == COLOR_WHITE
                     &&
@@ -1116,7 +1124,6 @@ EvalResult *position_val_iter_deep(
         }
     }
     free(moves_mask);
-    return ers;
 }
 
 void print_move_list(MoveListNode *move_list_node, Pos *pos_in) {
@@ -1196,11 +1203,17 @@ int main() {
     //float ply = 0.5;
     //EvalResult *ers = position_val_at_ply(
     //                &pos, ply, &prune_strat_no_pruning, 1, NULL);
-    Ply plies[] = {1.0, 2.0, 3.0, 4.0};
-    EvalResult *ers = position_val_iter_deep(&pos, plies, 2, 0.0);
+    Ply plies[] = {1.0, 2.0};
+    EvalResult *ers = calloc(pos.moves_len, sizeof(EvalResult));
+    if (ers == NULL) {
+        fprintf(stderr, "Could not allocate memory. Aborting...\n");
+        abort();
+    }
+    position_val_iter_deep(&pos, ers, plies, 2, 0.0);
     EvalResult er = ers[0];
     print_eval_result(&er);
     print_move_list(er.moves, &pos);
+    free(ers);
 
     printf("Number of positions explored: %d\n", n_pos_explored);
     printf("Number of positions made: %d\n", positions_made);
