@@ -151,7 +151,12 @@ int is_king_in_checkmate(Pos *pos);
 int is_king_in_stalemate(Pos *pos);
 void print_move(Move move, Pos *pos);
 EvalResult *position_val_at_ply(
-    Pos *pos, Ply ply, PruneStrategy *prune_strat, int do_quiescence_search);
+    Pos *pos,
+    Ply ply,
+    PruneStrategy *prune_strat,
+    int do_quiescence_search,
+    int *moves_mask
+);
 
 int positions_allocated = 0;
 
@@ -986,10 +991,11 @@ void reset_buffers() {
 }
 
 EvalResult *recurse_position_val_at_ply(
-    Pos *next_pos, Ply ply, PruneStrategy *prune_strat, int do_quiescence_search, Move move
+    Pos *next_pos, Ply ply, PruneStrategy *prune_strat,
+    int do_quiescence_search, Move move, int *moves_mask
 ) {
     EvalResult *eval_results = position_val_at_ply(
-            next_pos, ply-0.5, prune_strat, do_quiescence_search);
+            next_pos, ply-0.5, prune_strat, do_quiescence_search, moves_mask);
     EvalResult *eval_result = &eval_results[0];
     MoveListNode *new_move_list_node = move_list_node_buffer_current++;
     new_move_list_node->rest = (ply == 0.5 ? NULL : eval_result->moves);
@@ -999,8 +1005,11 @@ EvalResult *recurse_position_val_at_ply(
 }
 
 EvalResult *position_val_at_ply(
-    Pos *pos, Ply ply, PruneStrategy *prune_strat,
-    int do_quiescence_search
+    Pos *pos,
+    Ply ply,
+    PruneStrategy *prune_strat,
+    int do_quiescence_search,
+    int *moves_mask
 ) {
     EvalResult *ret_val;
     explore_position(pos);
@@ -1018,7 +1027,8 @@ EvalResult *position_val_at_ply(
         ret_val = eval_result_array_buffer_current;
         if (do_quiescence_search) {
             EvalResult *eval_results =
-                position_val_at_ply(pos, 10, &prune_strat_prune_low_val_changes, 0);
+                position_val_at_ply(
+                    pos, 10, &prune_strat_prune_low_val_changes, 0, NULL);
         } else {
             ret_val[0] = position_static_val(pos);
         }
@@ -1036,11 +1046,15 @@ EvalResult *position_val_at_ply(
         EvalResult pos_static_eval_result;
         int was_pos_static_eval_result_set = 0;
         for (int i = 0; i < pos->moves_len; i++) {
+            if (moves_mask != NULL && moves_mask[i]) {
+                continue;
+            }
             Move move = pos->p_moves[i];
             position_after_move(pos, &move, &next_pos);
             if (prune_strat->type == PruneStrategyTypeNoPruning) {
                 EvalResult *eval_result = recurse_position_val_at_ply(
-                    &next_pos, ply, prune_strat, do_quiescence_search, move);
+                    &next_pos, ply, prune_strat,
+                    do_quiescence_search, move, moves_mask);
                 ret_val[i] = *eval_result;
             } else if (prune_strat->type == PruneStrategyTypePruneLowValChanges) {
                 if (!was_pos_static_eval_result_set) {
@@ -1054,7 +1068,8 @@ EvalResult *position_val_at_ply(
                     || diff <= -prune_strat->cutoff) {
                     /* Don't prune; keep evaluating. */
                     EvalResult *eval_result = recurse_position_val_at_ply(
-                        &next_pos, ply, prune_strat, do_quiescence_search, move);
+                        &next_pos, ply, prune_strat,
+                        do_quiescence_search, move, moves_mask);
                     ret_val[i] = *eval_result;
                 } else {
                     /* Prune. Stop evaluating. */
@@ -1071,6 +1086,37 @@ EvalResult *position_val_at_ply(
         qsort(ret_val, pos->moves_len, sizeof(EvalResult), cmp_fn);
     }
     return ret_val;
+}
+
+EvalResult *position_val_iter_deep(
+    Pos *pos,
+    Ply *plies,
+    int plies_n,
+    Val cutoff_val_diff
+) {
+    EvalResult *ers = NULL;
+    int *moves_mask = calloc(pos->moves_len, sizeof(int));
+    for (int i = 0; i < plies_n; i++) {
+        Ply ply = plies[i];
+        ers = position_val_at_ply(
+            pos, ply, &prune_strat_no_pruning, 1, moves_mask);
+        Val cutoff_val = ers[0].val - cutoff_val_diff;
+        for (int j = 0; j < pos->moves_len; j++) {
+            if (
+                pos->active_color == COLOR_WHITE
+                    &&
+                ers[j].val < ers[0].val - cutoff_val_diff 
+                    ||
+                pos->active_color == COLOR_BLACK
+                    &&
+                ers[j].val > ers[0].val + cutoff_val_diff 
+            ) {
+                moves_mask[j] = 1;
+            }
+        }
+    }
+    free(moves_mask);
+    return ers;
 }
 
 void print_move_list(MoveListNode *move_list_node, Pos *pos_in) {
@@ -1130,7 +1176,7 @@ int main() {
     //            reset_buffers();
     //            Pos pos = decode_fen(line);
     //            float ply = 1.5;
-    //            EvalResult *ers = position_val_at_ply(&pos, ply, &prune_strat_no_pruning, 0);
+    //            EvalResult *ers = position_val_at_ply(&pos, ply, &prune_strat_no_pruning, 0, NULL);
     //            //print_eval_result(&er);
     //            EvalResult er = ers[0];
     //            print_move_list(er.moves, &pos);
@@ -1147,14 +1193,11 @@ int main() {
     //fclose(f);
 
     Pos pos = decode_fen(fen_entice_queen);
-    //explore_position(&pos);
-    //for (int i = 0; i < pos.moves_len; i++) {
-    //    Move move = pos.p_moves[i];
-    //    print_move(move, &pos);
-    //    printf("\n");
-    //}
-    float ply = 0.5;
-    EvalResult *ers = position_val_at_ply(&pos, ply, &prune_strat_no_pruning, 1);
+    //float ply = 0.5;
+    //EvalResult *ers = position_val_at_ply(
+    //                &pos, ply, &prune_strat_no_pruning, 1, NULL);
+    Ply plies[] = {1.0, 2.0, 3.0, 4.0};
+    EvalResult *ers = position_val_iter_deep(&pos, plies, 2, 0.0);
     EvalResult er = ers[0];
     print_eval_result(&er);
     print_move_list(er.moves, &pos);
