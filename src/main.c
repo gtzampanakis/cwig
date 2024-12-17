@@ -46,10 +46,6 @@
 
 #define CHECKMATE_VAL 99999999
 
-#define WINNER_UNDECIDED 0
-#define WINNER_WHITE 1
-#define WINNER_BLACK -1
-
 int n_pos_explored = 0;
 
 typedef char Piece;
@@ -129,8 +125,6 @@ MoveListNode *move_list_node_buffer_current = move_list_node_buffer_start;
 
 typedef struct {
     Val val;
-    int winner;
-    int is_draw;
     MoveListNode *moves;
 } EvalResult;
 
@@ -139,11 +133,25 @@ EvalResult *eval_result_array_buffer_end =
     eval_result_array_buffer_start + EVAL_RESULT_ARRAY_BUFFER_N;
 EvalResult *eval_result_array_buffer_current = eval_result_array_buffer_start;
 
+enum PruneStrategyType {
+    PruneStrategyTypeNoPruning,
+    PruneStrategyTypePruneLowValChanges,
+    PruneStrategyTypeBasic,
+};
+
+typedef struct PruneStrategy {
+    int type;
+    Ply initial_ply;
+    Val cutoff;
+} PruneStrategy;
+
 void explore_position(Pos *pos);
 int is_king_in_check(Pos *pos);
 int is_king_in_checkmate(Pos *pos);
 int is_king_in_stalemate(Pos *pos);
 void print_move(Move move, Pos *pos);
+EvalResult *position_val_at_ply(
+    Pos *pos, Ply ply, PruneStrategy *prune_strategy, int do_quiescence_search);
 
 int positions_allocated = 0;
 
@@ -165,6 +173,10 @@ struct Pos {
     char is_king_in_stalemate;
     Move *p_moves;
     int moves_len;
+};
+
+PruneStrategy prune_strategy_no_pruning ={
+    .type = PruneStrategyTypeNoPruning
 };
 
 int positions_made = 0;
@@ -912,20 +924,16 @@ void explore_position(Pos *pos) {
 EvalResult position_static_val(Pos *pos) {
     EvalResult out;
     out.val = 0;
-    out.is_draw = 0;
-    out.winner = WINNER_UNDECIDED;
     explore_position(pos);
     if (pos->is_king_in_checkmate == 1) {
         if (pos->active_color == COLOR_WHITE) {
-            out.winner = WINNER_BLACK;
+            out.val = -INFINITY;
         } else if (pos->active_color == COLOR_BLACK) {
-            out.winner = WINNER_WHITE;
+            out.val = INFINITY;
         }
     } else if (pos->is_king_in_stalemate == 1) {
-        out.is_draw = 1;
         out.val = 0;
     } else {
-        out.winner = WINNER_UNDECIDED;
         for (int f = 0; f < N_FILES; f++) {
             for (int r = 0; r < N_RANKS; r++) {
                 Sq sq = make_sq(f, r);
@@ -940,7 +948,7 @@ EvalResult position_static_val(Pos *pos) {
 }
 
 void print_eval_result(EvalResult *er) {
-    printf("EvalResult: winner: %d, val: %f\n", er->winner, er->val);
+    printf("EvalResult: val: %+.1f\n", er->val);
 }
 
 int cmp_eval_results(const void *aa, const void *bb) {
@@ -949,20 +957,14 @@ int cmp_eval_results(const void *aa, const void *bb) {
     const EvalResult *a = aa;
     const EvalResult *b = bb;
     int r;
-    if (a->winner == WINNER_UNDECIDED && b->winner == WINNER_UNDECIDED) {
-        r = b->val - a->val;
+    if (a->val == INFINITY && b->val == INFINITY) { r = 0; }
+    else if (a->val == -INFINITY && b->val == -INFINITY) { r = 0; }
+    else {
+        Val diff = b->val - a->val;
+        if (diff > 0) { r = 1; }
+        else if (diff < 0) { r = -1; }
+        else { r = 0; }
     }
-    else if (a->winner == WINNER_UNDECIDED && b->winner == WINNER_BLACK) r = -1;
-    else if (a->winner == WINNER_UNDECIDED && b->winner == WINNER_WHITE) r = 1;
-
-    else if (a->winner == WINNER_WHITE && b->winner == WINNER_UNDECIDED) r = -1;
-    else if (a->winner == WINNER_WHITE && b->winner == WINNER_BLACK) r = -1;
-    else if (a->winner == WINNER_WHITE && b->winner == WINNER_WHITE) r = 0;
-
-    else if (a->winner == WINNER_BLACK && b->winner == WINNER_UNDECIDED) r = 1;
-    else if (a->winner == WINNER_BLACK && b->winner == WINNER_BLACK) r = 0;
-    else if (a->winner == WINNER_BLACK && b->winner == WINNER_WHITE) r = 1;
-
     return r;
 }
 
@@ -976,7 +978,23 @@ void reset_buffers() {
     eval_result_array_buffer_current = eval_result_array_buffer_start;
 }
 
-EvalResult *position_val_at_ply(Pos *pos, Ply ply) {
+EvalResult *recurse_position_val_at_ply(
+    Pos *next_pos, Ply ply, PruneStrategy *prune_strategy, int do_quiescence_search, Move move
+) {
+    EvalResult *eval_results = position_val_at_ply(
+            next_pos, ply-0.5, prune_strategy, do_quiescence_search);
+    EvalResult *eval_result = &eval_results[0];
+    MoveListNode *new_move_list_node = move_list_node_buffer_current++;
+    new_move_list_node->rest = (ply == 0.5 ? NULL : eval_result->moves);
+    new_move_list_node->move = move;
+    eval_result->moves = new_move_list_node;
+    return eval_result;
+}
+
+EvalResult *position_val_at_ply(
+    Pos *pos, Ply ply, PruneStrategy *prune_strategy,
+    int do_quiescence_search
+) {
     EvalResult *ret_val;
     explore_position(pos);
     if (
@@ -991,7 +1009,16 @@ EvalResult *position_val_at_ply(Pos *pos, Ply ply) {
             abort();
         }
         ret_val = eval_result_array_buffer_current;
-        ret_val[0] = position_static_val(pos);
+        if (do_quiescence_search) {
+            PruneStrategy prune_strat_quiesc = {
+                .type = PruneStrategyTypePruneLowValChanges,
+                .cutoff = 1.0,
+            };
+            EvalResult *eval_results =
+                position_val_at_ply(pos, 10, &prune_strat_quiesc, 0);
+        } else {
+            ret_val[0] = position_static_val(pos);
+        }
         eval_result_array_buffer_current++;
     } else {
         Pos next_pos;
@@ -1003,17 +1030,34 @@ EvalResult *position_val_at_ply(Pos *pos, Ply ply) {
         }
         ret_val = eval_result_array_buffer_current;
         eval_result_array_buffer_current += pos->moves_len;
+        EvalResult pos_static_eval_result;
+        int was_pos_static_eval_result_set = 0;
         for (int i = 0; i < pos->moves_len; i++) {
             Move move = pos->p_moves[i];
             position_after_move(pos, &move, &next_pos);
-            EvalResult *eval_results = position_val_at_ply(
-                                                    &next_pos, ply-0.5);
-            EvalResult eval_result = eval_results[0];
-            MoveListNode *new_move_list_node = move_list_node_buffer_current++;
-            new_move_list_node->rest = (ply == 0.5 ? NULL : eval_result.moves);
-            new_move_list_node->move = move;
-            eval_result.moves = new_move_list_node;
-            ret_val[i] = eval_result;
+            if (prune_strategy->type == PruneStrategyTypeNoPruning) {
+                EvalResult *eval_result = recurse_position_val_at_ply(
+                    &next_pos, ply, prune_strategy, do_quiescence_search, move);
+                ret_val[i] = *eval_result;
+            } else if (prune_strategy->type == PruneStrategyTypePruneLowValChanges) {
+                if (!was_pos_static_eval_result_set) {
+                    pos_static_eval_result = position_static_val(pos);
+                    was_pos_static_eval_result_set = 1;
+                }
+                EvalResult next_pos_eval_result = position_static_val(&next_pos);
+                Val next_pos_static_val = next_pos_eval_result.val;
+                Val diff = next_pos_static_val - pos_static_eval_result.val;
+                if (diff >= prune_strategy->cutoff
+                    || diff <= -prune_strategy->cutoff) {
+                    /* Don't prune. */
+                    EvalResult *eval_result = recurse_position_val_at_ply(
+                        &next_pos, ply, prune_strategy, do_quiescence_search, move);
+                    ret_val[i] = *eval_result;
+                } else {
+                    /* Prune. */
+                    ret_val[i] = pos_static_eval_result;
+                }
+            }
         }
         int (*cmp_fn)(const void *, const void *);
         if (pos->active_color == COLOR_WHITE) {
@@ -1058,7 +1102,7 @@ int main() {
     char starting_fen[] =
         "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 123 55";
     char fen_mate_in_2[] =
-        "1r1kr3/Nbppn1pp/1b6/8/6Q1/3B1P2/Pq3P1P/3RR1K1 w - - 1 0";
+        "1rb4r/pkPp3p/1b1P3n/1Q6/N3Pp2/8/P1P3PP/7K w - - 1 0";
     char mated[] =
         "r1bbRk1r/ppp2ppp/8/1B6/5q2/2P5/PPP2PPP/R5K1 b - - 1 1";
     char empty_fen[] = "8/8/8/8/8/8/8/8 w - - 0 1";
@@ -1066,6 +1110,7 @@ int main() {
     char fen_simple_mate_in_2[] = "7k/8/6pp/8/8/8/8/K1QR4 w - - 0 1";
     char fen_simple_mate_in_1[] = "7k/6pp/8/8/8/8/8/K2R4 w - - 0 1";
     char many_rooks_can_take[] = "k7/8/8/2R5/2b5/2R5/8/K7 w - - 0 1";
+    char fen_entice_queen[] = "4k3/4p3/8/8/8/4Q3/8/K7 w - - 0 1";
 
     //FILE *f = fopen("mates_in_2.txt", "r");
     //char c;
@@ -1081,7 +1126,7 @@ int main() {
     //            reset_buffers();
     //            Pos pos = decode_fen(line);
     //            float ply = 1.5;
-    //            EvalResult *ers = position_val_at_ply(&pos, ply);
+    //            EvalResult *ers = position_val_at_ply(&pos, ply, &prune_strategy_no_pruning, 0);
     //            //print_eval_result(&er);
     //            EvalResult er = ers[0];
     //            print_move_list(er.moves, &pos);
@@ -1097,16 +1142,15 @@ int main() {
     //}
     //fclose(f);
 
-    Pos pos = decode_fen(
-        "1rb4r/pkPp3p/1b1P3n/1Q6/N3Pp2/8/P1P3PP/7K w - - 1 0");
+    Pos pos = decode_fen(fen_entice_queen);
     //explore_position(&pos);
     //for (int i = 0; i < pos.moves_len; i++) {
     //    Move move = pos.p_moves[i];
     //    print_move(move, &pos);
     //    printf("\n");
     //}
-    float ply = 1.5;
-    EvalResult *ers = position_val_at_ply(&pos, ply);
+    float ply = 0.5;
+    EvalResult *ers = position_val_at_ply(&pos, ply, &prune_strategy_no_pruning, 1);
     EvalResult er = ers[0];
     print_eval_result(&er);
     print_move_list(er.moves, &pos);
