@@ -763,7 +763,7 @@ void move_to_alg(Move move_in, Pos *pos, char *result) {
         is_capture = 1;
     }
     int i = 0;
-    if      (wp_in == P_WHITE && is_capture) {
+    if (wp_in == P_WHITE && is_capture) {
         result[i++] = f_to_algf(move_in.from.f);
     }
     else if (wp_in == R_WHITE) { result[i++] = 'R'; }
@@ -777,7 +777,7 @@ void move_to_alg(Move move_in, Pos *pos, char *result) {
         if (move_eq(move, move_in)) { continue; }
         if (sq_eq(move.to, move_in.to)) {
             Piece wp = piece_as_white(get_piece_at_sq(pos, move.from));
-            if (wp == wp_in) {
+            if (wp == wp_in && wp != P_WHITE) {
                 is_unique = 0;
                 break;
             }
@@ -794,7 +794,6 @@ void move_to_alg(Move move_in, Pos *pos, char *result) {
                 Piece wp = piece_as_white(get_piece_at_sq(pos, move.from));
                 if (wp == wp_in) {
                     if (move.from.f == move_in.from.f) {
-                        printf("1\n");
                         is_unique = 0;
                         break;
                     }
@@ -1111,6 +1110,7 @@ int main() {
     char fen_simple_mate_in_1[] = "7k/6pp/8/8/8/8/8/K2R4 w - - 0 1";
     char many_rooks_can_take[] = "k7/8/8/2R5/2b5/2R5/8/K7 w - - 0 1";
     char fen_entice_queen[] = "4k3/4p3/8/8/8/4Q3/8/K7 w - - 0 1";
+    char fen_lots_of_captures[] = "8/2b2k2/3p1p2/4p3/3P1P2/2BK2B1/8/8 w - - 0 1";
 
     //FILE *f = fopen("mates_in_2.txt", "r");
     //char c;
@@ -1142,7 +1142,7 @@ int main() {
     //}
     //fclose(f);
 
-    Pos pos = decode_fen(fen_entice_queen);
+    Pos pos = decode_fen(fen_lots_of_captures);
     //explore_position(&pos);
     //for (int i = 0; i < pos.moves_len; i++) {
     //    Move move = pos.p_moves[i];
