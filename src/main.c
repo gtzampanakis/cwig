@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* TODO: join move lists when doing quiescence search */
+
 #define MOVE_BUFFER_N_MOVES ( 100 * 1000 * 50 * 30 )
 #define MOVE_LIST_NODE_BUFFER_N_MOVE_LIST_NODES ( 50 * 1000 * 50 )
 #define EVAL_RESULT_ARRAY_BUFFER_N ( 50 * 1000 * 50 * 10 )
@@ -154,8 +156,7 @@ EvalResult *position_val_at_ply(
     Pos *pos,
     Ply ply,
     PruneStrategy *prune_strat,
-    int do_quiescence_search,
-    int *moves_mask
+    int do_quiescence_search
 );
 
 int positions_allocated = 0;
@@ -990,12 +991,24 @@ void reset_buffers() {
     eval_result_array_buffer_current = eval_result_array_buffer_start;
 }
 
+void join_move_lists(MoveListNode *a, MoveListNode *b) {
+    if (a == NULL) {
+        fprintf(stderr,
+            "NULL first move list passed to join_move_lists, aborting...");
+        abort();
+    }
+    while (a->rest != NULL) {
+        a = a->rest;
+    }
+    a->rest = b;
+}
+
 EvalResult *recurse_position_val_at_ply(
     Pos *next_pos, Ply ply, PruneStrategy *prune_strat,
-    int do_quiescence_search, Move move, int *moves_mask
+    int do_quiescence_search, Move move
 ) {
     EvalResult *eval_results = position_val_at_ply(
-            next_pos, ply-0.5, prune_strat, do_quiescence_search, moves_mask);
+            next_pos, ply-0.5, prune_strat, do_quiescence_search);
     EvalResult *eval_result = &eval_results[0];
     MoveListNode *new_move_list_node = move_list_node_buffer_current++;
     new_move_list_node->rest = (ply == 0.5 ? NULL : eval_result->moves);
@@ -1008,8 +1021,7 @@ EvalResult *position_val_at_ply(
     Pos *pos,
     Ply ply,
     PruneStrategy *prune_strat,
-    int do_quiescence_search,
-    int *moves_mask
+    int do_quiescence_search
 ) {
     EvalResult *ret_val;
     explore_position(pos);
@@ -1024,11 +1036,12 @@ EvalResult *position_val_at_ply(
                 "eval_result_array_buffer exhausted. Aborting...\n");
             abort();
         }
-        ret_val = eval_result_array_buffer_current;
-        if (do_quiescence_search) {
+        if (ply == 0 && do_quiescence_search) {
             EvalResult *eval_results =
                 position_val_at_ply(
-                    pos, 10, &prune_strat_prune_low_val_changes, 0, NULL);
+                    pos, 10,
+                    &prune_strat_prune_low_val_changes, do_quiescence_search);
+            ret_val = eval_results;
         } else {
             ret_val[0] = position_static_val(pos);
         }
@@ -1046,15 +1059,12 @@ EvalResult *position_val_at_ply(
         EvalResult pos_static_eval_result;
         int was_pos_static_eval_result_set = 0;
         for (int i = 0; i < pos->moves_len; i++) {
-            if (moves_mask != NULL && moves_mask[i]) {
-                continue;
-            }
             Move move = pos->p_moves[i];
             position_after_move(pos, &move, &next_pos);
             if (prune_strat->type == PruneStrategyTypeNoPruning) {
                 EvalResult *eval_result = recurse_position_val_at_ply(
-                    &next_pos, ply, prune_strat,
-                    do_quiescence_search, move, moves_mask);
+                    &next_pos, ply,
+                    prune_strat, do_quiescence_search, move);
                 ret_val[i] = *eval_result;
             } else if (prune_strat->type == PruneStrategyTypePruneLowValChanges) {
                 if (!was_pos_static_eval_result_set) {
@@ -1068,8 +1078,7 @@ EvalResult *position_val_at_ply(
                     || diff <= -prune_strat->cutoff) {
                     /* Don't prune; keep evaluating. */
                     EvalResult *eval_result = recurse_position_val_at_ply(
-                        &next_pos, ply, prune_strat,
-                        do_quiescence_search, move, moves_mask);
+                        &next_pos, ply, prune_strat, do_quiescence_search, move);
                     ret_val[i] = *eval_result;
                 } else {
                     /* Prune. Stop evaluating. */
@@ -1095,21 +1104,12 @@ void position_val_iter_deep(
     int plies_n,
     Val cutoff_val_diff
 ) {
-    int *moves_mask = calloc(pos->moves_len, sizeof(int));
-    if (moves_mask == NULL) {
-        fprintf(stderr, "Could not allocate memory. Aborting...\n");
-        abort();
-    }
-    for (int i = 0; i < plies_n; i++) {
-        Ply ply = plies[i];
-        reset_buffers();
+    if (plies_n > 0) {
+        Ply ply = plies[0];
         EvalResult *ers = position_val_at_ply(
-            pos, ply, &prune_strat_no_pruning, 1, moves_mask);
-        Val cutoff_val = ers[0].val - cutoff_val_diff;
+            pos, ply, &prune_strat_no_pruning, 0);
+        int n_moves_to_keep = 0;
         for (int j = 0; j < pos->moves_len; j++) {
-            if (moves_mask[j] == 0) {
-                buffer[j] = ers[j];
-            }
             if (
                 pos->active_color == COLOR_WHITE
                     &&
@@ -1119,11 +1119,42 @@ void position_val_iter_deep(
                     &&
                 ers[j].val > ers[0].val + cutoff_val_diff 
             ) {
-                moves_mask[j] = 1;
+                /* Further explore the moves that are within the cutoff. */
+
+                /* Find the resulting position. */
+                MoveListNode *move_list_node = ers[j].moves;
+                Pos current_pos = *pos;
+                Pos next_pos;
+                while (move_list_node != NULL) {
+                    position_after_move(
+                        &current_pos, &move_list_node->move, &next_pos);
+                    move_list_node = move_list_node->rest;
+                    current_pos = next_pos;
+                }
+                /* At this point next_pos (and current_pos) is the resulting
+                 * position. */
+                EvalResult *ers_next_ply = calloc(
+                    next_pos.moves_len, sizeof(EvalResult));
+                position_val_iter_deep(
+                    &next_pos,
+                    ers_next_ply,
+                    plies+1,
+                    plies_n-1,
+                    cutoff_val_diff
+                );
+                /* Use the best continuation from ers_next_ply but set the
+                 * current move list as the leading move list. */
+                buffer[j] = ers_next_ply[0];
+                buffer[j].moves = ers[j].moves;
+                join_move_lists(buffer[j].moves, ers_next_ply[0].moves);
+            } else {
+                /* Store the current evaluation i.e. no further exploration
+                 * will be conducted. Corollary: Those moves do not need
+                 * reordering. */
+                buffer[j] = ers[j];
             }
         }
     }
-    free(moves_mask);
 }
 
 void print_move_list(MoveListNode *move_list_node, Pos *pos_in) {
@@ -1183,7 +1214,7 @@ int main() {
     //            reset_buffers();
     //            Pos pos = decode_fen(line);
     //            float ply = 1.5;
-    //            EvalResult *ers = position_val_at_ply(&pos, ply, &prune_strat_no_pruning, 0, NULL);
+    //            EvalResult *ers = position_val_at_ply(&pos, ply, &prune_strat_no_pruning, 0);
     //            //print_eval_result(&er);
     //            EvalResult er = ers[0];
     //            print_move_list(er.moves, &pos);
@@ -1200,20 +1231,21 @@ int main() {
     //fclose(f);
 
     Pos pos = decode_fen(fen_entice_queen);
-    //float ply = 0.5;
-    //EvalResult *ers = position_val_at_ply(
-    //                &pos, ply, &prune_strat_no_pruning, 1, NULL);
-    Ply plies[] = {1.0, 2.0};
-    EvalResult *ers = calloc(pos.moves_len, sizeof(EvalResult));
-    if (ers == NULL) {
-        fprintf(stderr, "Could not allocate memory. Aborting...\n");
-        abort();
-    }
-    position_val_iter_deep(&pos, ers, plies, 2, 0.0);
+    float ply = 1.0;
+    EvalResult *ers = position_val_at_ply(
+                    &pos, ply, &prune_strat_no_pruning, 1);
+    //Ply plies[] = {0.5};
+    //EvalResult *ers = calloc(pos.moves_len, sizeof(EvalResult));
+    //if (ers == NULL) {
+    //    fprintf(stderr, "Could not allocate memory. Aborting...\n");
+    //    abort();
+    //}
+    //reset_buffers();
+    //position_val_iter_deep(&pos, ers, plies, 1, 0.5);
     EvalResult er = ers[0];
     print_eval_result(&er);
     print_move_list(er.moves, &pos);
-    free(ers);
+    //free(ers);
 
     printf("Number of positions explored: %d\n", n_pos_explored);
     printf("Number of positions made: %d\n", positions_made);
