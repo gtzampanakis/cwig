@@ -1003,20 +1003,6 @@ void join_move_lists(MoveListNode *a, MoveListNode *b) {
     a->rest = b;
 }
 
-EvalResult *recurse_position_val_at_ply(
-    Pos *next_pos, Ply ply, PruneStrategy *prune_strat,
-    int do_quiescence_search, Move move
-) {
-    EvalResult *eval_results = position_val_at_ply(
-            next_pos, ply-0.5, prune_strat, do_quiescence_search);
-    EvalResult *eval_result = &eval_results[0];
-    MoveListNode *new_move_list_node = move_list_node_buffer_current++;
-    new_move_list_node->rest = (ply == 0.5 ? NULL : eval_result->moves);
-    new_move_list_node->move = move;
-    eval_result->moves = new_move_list_node;
-    return eval_result;
-}
-
 EvalResult *position_val_at_ply(
     Pos *pos,
     Ply ply,
@@ -1062,10 +1048,7 @@ EvalResult *position_val_at_ply(
             Move move = pos->p_moves[i];
             position_after_move(pos, &move, &next_pos);
             if (prune_strat->type == PruneStrategyTypeNoPruning) {
-                EvalResult *eval_result = recurse_position_val_at_ply(
-                    &next_pos, ply,
-                    prune_strat, do_quiescence_search, move);
-                ret_val[i] = *eval_result;
+                goto recurse;
             } else if (prune_strat->type == PruneStrategyTypePruneLowValChanges) {
                 if (!was_pos_static_eval_result_set) {
                     pos_static_eval_result = position_static_val(pos);
@@ -1077,13 +1060,25 @@ EvalResult *position_val_at_ply(
                 if (diff >= prune_strat->cutoff
                     || diff <= -prune_strat->cutoff) {
                     /* Don't prune; keep evaluating. */
-                    EvalResult *eval_result = recurse_position_val_at_ply(
-                        &next_pos, ply, prune_strat, do_quiescence_search, move);
-                    ret_val[i] = *eval_result;
+                    goto recurse;
                 } else {
                     /* Prune. Stop evaluating. */
                     ret_val[i] = pos_static_eval_result;
                 }
+            }
+            if (0) {
+                recurse:
+                    EvalResult *eval_results = position_val_at_ply(
+                            &next_pos, ply-0.5,
+                            prune_strat, do_quiescence_search);
+                    EvalResult *eval_result = &eval_results[0];
+                    MoveListNode *new_move_list_node =
+                                            move_list_node_buffer_current++;
+                    new_move_list_node->rest =
+                                    (ply == 0.5 ? NULL : eval_result->moves);
+                    new_move_list_node->move = move;
+                    eval_result->moves = new_move_list_node;
+                    ret_val[i] = *eval_result;
             }
         }
         int (*cmp_fn)(const void *, const void *);
